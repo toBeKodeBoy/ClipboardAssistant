@@ -1,0 +1,2 @@
+CFBundleDisplayName = "Clipboard Assistant";
+NSAccessibilityUsageDescription = "Pastes the selected history back into the current app. Keyboard input is not recorded.";

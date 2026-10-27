@@ -3,4 +3,5 @@ logs/
 build/
 DerivedData/
 xcuserdata/
+prototype/
 *.xcuserstate

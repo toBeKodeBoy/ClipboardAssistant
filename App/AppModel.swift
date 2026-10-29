@@ -8,6 +8,7 @@ final class AppModel: ObservableObject {
     @Published var filter: ItemFilter = .all
     @Published var selectedID: String?
     @Published var banner: String?
+    @Published var confirmClearAll = false
     @Published var accessibilityTrusted = false
 
     var settings: AppSettings

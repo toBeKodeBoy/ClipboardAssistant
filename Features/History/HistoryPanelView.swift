@@ -85,11 +85,21 @@ struct HistoryPanelView: View {
     }
 
     private func row(_ item: ClipboardItem) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(item.title).lineLimit(1)
-            Text(item.subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+        HStack(spacing: 8) {
+            sourceIcon(item.sourceBundleID)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.title).lineLimit(1)
+                Text(item.subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
         }
         .padding(.vertical, 2)
+    }
+
+    private func sourceIcon(_ bundleID: String?) -> some View {
+        Image(nsImage: AppIconCache.image(bundleID: bundleID))
+            .resizable()
+            .interpolation(.high)
+            .frame(width: 32, height: 32)
     }
 
     @ViewBuilder
@@ -97,6 +107,7 @@ struct HistoryPanelView: View {
         if let item = model.items.first(where: { $0.id == model.selectedID }) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
+                    sourceIcon(item.sourceBundleID)
                     VStack(alignment: .leading) {
                         Text(item.sourceName).font(.headline)
                         Text(item.subtitle).font(.caption).foregroundStyle(.secondary)
@@ -174,6 +185,18 @@ struct HistoryPanelView: View {
         .foregroundStyle(.secondary)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        .alert(L10n.text("清空全部历史？", "Clear all history?"), isPresented: $model.confirmClearAll) {
+            Button(L10n.text("清空", "Clear"), role: .destructive) {
+                do {
+                    try model.clearAll()
+                } catch {
+                    model.banner = L10n.text("清空失败", "Couldn't clear history")
+                }
+            }
+            Button(L10n.text("取消", "Cancel"), role: .cancel) {}
+        } message: {
+            Text(L10n.text("将删除 \(model.items.count) 条记录，包含已置顶的条目。", "This deletes \(model.items.count) items, including pinned ones."))
+        }
     }
 
     @ViewBuilder

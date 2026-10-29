@@ -71,6 +71,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     func closePanel() {
+        model.confirmClearAll = false
         model.settings.panelWidth = panel.frame.width
         model.settings.panelHeight = panel.frame.height
         panel.orderOut(nil)
@@ -126,9 +127,19 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     private func handle(_ event: NSEvent) -> Bool {
+        if model.confirmClearAll {
+            return false
+        }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         if event.keyCode == UInt16(kVK_Escape) {
             closePanel()
+            return true
+        }
+        let commandOnly = flags.intersection([.command, .shift, .option, .control]) == .command
+        if event.keyCode == UInt16(kVK_Delete) && commandOnly {
+            if !model.items.isEmpty {
+                model.confirmClearAll = true
+            }
             return true
         }
         if isSearchEditing && passesToSearchField(event, flags: flags) {

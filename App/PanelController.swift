@@ -2,6 +2,15 @@ import AppKit
 import Carbon
 import SwiftUI
 
+/**
+ * 主面板窗口。
+ *
+ * 使用 nonactivatingPanel，呼出时不抢走原应用焦点。打开时记下前台应用；关闭时不改剪切板。
+ * 全局热键调用方传入屏幕中心，菜单打开则使用「面板位置」设置。
+ *
+ * @author toBeKodeBoy
+ * @date 2026/10/27
+ */
 @MainActor
 final class PanelController: NSObject, NSWindowDelegate {
     private let model: AppModel
@@ -9,6 +18,11 @@ final class PanelController: NSObject, NSWindowDelegate {
     private var keyMonitor: Any?
     private var outsideMonitor: Any?
 
+    /**
+     * 创建浮动主面板，并接上粘贴前关闭、失败后重新打开的回调。
+     *
+     * @param model 面板绑定的应用状态
+     */
     init(model: AppModel) {
         self.model = model
         panel = NSPanel(
@@ -39,6 +53,11 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
     }
 
+    /**
+     * 已显示时关闭，未显示时按指定位置打开。
+     *
+     * @param placement 本次打开位置。为空时使用设置里的面板位置
+     */
     func toggle(placement: PanelPlacement? = nil) {
         if panel.isVisible {
             closePanel()
@@ -47,6 +66,15 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
     }
 
+    /**
+     * 显示主面板。
+     *
+     * 默认先记下前台应用并清掉上一次提示。粘贴失败后重新打开时两者都跳过，以保留提示和原目标。
+     *
+     * @param rememberingFrontApp 是否把当前前台应用记为粘贴目标
+     * @param clearingBanner 是否清掉底部提示
+     * @param placement 本次位置。为空时使用设置
+     */
     func show(rememberingFrontApp: Bool = true, clearingBanner: Bool = true, placement: PanelPlacement? = nil) {
         if rememberingFrontApp {
             model.rememberFrontApp()
@@ -65,11 +93,19 @@ final class PanelController: NSObject, NSWindowDelegate {
         installOutsideMonitor()
     }
 
+    /**
+     * 粘贴失败后重新打开面板，保留失败提示和原来的粘贴目标。
+     */
     func showFeedback() {
         guard !panel.isVisible else { return }
         show(rememberingFrontApp: false, clearingBanner: false)
     }
 
+    /**
+     * 关闭面板。
+     *
+     * 取消尚未确认的清空，记下当前尺寸，并卸掉按键和面板外点击监听。不修改剪切板。
+     */
     func closePanel() {
         model.confirmClearAll = false
         model.settings.panelWidth = panel.frame.width
@@ -85,10 +121,24 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
     }
 
+    /**
+     * 窗口即将关闭时走同一套关闭逻辑。
+     *
+     * @param notification 窗口关闭通知
+     */
     func windowWillClose(_ notification: Notification) {
         closePanel()
     }
 
+    /**
+     * 计算面板原点，并把它限制在鼠标所在屏幕的可见区域内。
+     *
+     * center 放在该屏幕正中，其余放在指针附近。
+     *
+     * @param size 面板尺寸
+     * @param placement 位置模式。为空时使用设置
+     * @return 左下角坐标
+     */
     private func origin(for size: NSSize, placement: PanelPlacement? = nil) -> NSPoint {
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
@@ -105,6 +155,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         return origin
     }
 
+    /**
+     * 监听面板外的鼠标按下，用来点击外部关闭。
+     */
     private func installOutsideMonitor() {
         if outsideMonitor != nil { return }
         outsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
@@ -114,6 +167,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
     }
 
+    /**
+     * 监听面板作为关键窗口时的按键。
+     */
     private func installKeyMonitor() {
         if keyMonitor != nil { return }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
@@ -122,10 +178,24 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
     }
 
+    /**
+     * 搜索框是否正在编辑。
+     *
+     * 为 true 时，Delete、左右方向键和 ⌘Z 交给输入框。
+     */
     private var isSearchEditing: Bool {
         (panel.firstResponder as? NSTextView)?.isFieldEditor == true
     }
 
+    /**
+     * 处理主面板快捷键。
+     *
+     * 清空确认框打开时把回车和 Esc 交给确认框。搜索框编辑中，Delete、左右方向键和 ⌘Z 交给输入框。
+     * ⌘⌫ 始终清空。回车按修饰键选择粘贴、只复制或纯文本。
+     *
+     * @param event 按键事件
+     * @return 已消费时返回 true，调用方应吞掉事件
+     */
     private func handle(_ event: NSEvent) -> Bool {
         if model.confirmClearAll {
             return false
@@ -185,6 +255,15 @@ final class PanelController: NSObject, NSWindowDelegate {
         return false
     }
 
+    /**
+     * 判断按键是否应留给搜索框。
+     *
+     * 编辑中的 Delete、左右方向键、Home、End，以及 ⌘Z、⌘A、⌘C、⌘V、⌘X 交给输入框。
+     *
+     * @param event 按键事件
+     * @param flags 已去掉设备相关位的修饰键
+     * @return 应交给搜索框时返回 true
+     */
     private func passesToSearchField(_ event: NSEvent, flags: NSEvent.ModifierFlags) -> Bool {
         if flags.contains(.command) {
             let character = event.charactersIgnoringModifiers?.lowercased()
@@ -204,6 +283,11 @@ final class PanelController: NSObject, NSWindowDelegate {
         return editing.contains(event.keyCode)
     }
 
+    /**
+     * 在当前筛选结果里上下移动选中项。
+     *
+     * @param down true 为下一条，false 为上一条
+     */
     private func moveSelection(down: Bool) {
         let visible = model.visibleItems()
         guard !visible.isEmpty else { return }

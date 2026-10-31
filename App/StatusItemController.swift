@@ -1,6 +1,14 @@
 import AppKit
 import SwiftUI
 
+/**
+ * 菜单栏图标和菜单。
+ *
+ * 打开菜单时立刻记下前台应用。图标为模板图：暂停加斜杠，未授权加圆点。
+ *
+ * @author toBeKodeBoy
+ * @date 2026/10/27
+ */
 @MainActor
 final class StatusItemController: NSObject, NSMenuDelegate {
     private let model: AppModel
@@ -8,6 +16,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let item: NSStatusItem
     private var settingsWindow: NSWindow?
 
+    /**
+     * 创建状态栏图标，并把全局热键接到面板开关。
+     *
+     * 热键固定在光标所在屏幕正中打开。
+     *
+     * @param model 应用状态
+     * @param panel 主面板
+     */
     init(model: AppModel, panel: PanelController) {
         self.model = model
         self.panel = panel
@@ -23,6 +39,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
 
+    /**
+     * 菜单打开前刷新前台应用、权限、历史和图标。
+     *
+     * @param menu 即将打开的状态栏菜单
+     */
     func menuWillOpen(_ menu: NSMenu) {
         model.rememberFrontApp()
         model.refreshAccessibility()
@@ -31,6 +52,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         item.button?.image = icon()
     }
 
+    /**
+     * 重建菜单：最近 10 条、打开主面板、暂停和设置。
+     *
+     * 最近条目不显示图标。没有历史时放一条不可点的占位。
+     *
+     * @param menu 要填充的菜单
+     */
     private func rebuild(_ menu: NSMenu) {
         menu.removeAllItems()
         let recent = Array(model.items.prefix(10))
@@ -60,6 +88,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(settings)
     }
 
+    /**
+     * 绘制模板图标。
+     *
+     * 暂停时加斜杠，辅助功能未授权时加圆点。
+     *
+     * @return 18 点模板图
+     */
     private func icon() -> NSImage {
         let paused = model.settings.isPaused
         let trusted = model.accessibilityTrusted
@@ -86,19 +121,33 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return image
     }
 
+    /**
+     * 把菜单里的一条最近记录按原始类型粘贴。
+     *
+     * @param sender 代表最近条目的菜单项，representedObject 为条目标识
+     */
     @objc private func pasteRecent(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String else { return }
         model.paste(mode: .automatic, itemID: id)
     }
 
+    /**
+     * 按「面板位置」设置打开主面板。
+     */
     @objc private func openPanel() {
         panel.show()
     }
 
+    /**
+     * 切换暂停。图标在下次打开菜单时重画。
+     */
     @objc private func togglePause() {
         model.togglePause()
     }
 
+    /**
+     * 打开或前置设置窗口。
+     */
     @objc private func openSettings() {
         if settingsWindow == nil {
             let host = NSHostingController(rootView: SettingsView().environmentObject(model))

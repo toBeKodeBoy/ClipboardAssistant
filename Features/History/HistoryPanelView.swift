@@ -64,23 +64,44 @@ struct HistoryPanelView: View {
     }
 
     private var split: some View {
-        HStack(spacing: 0) {
-            List(selection: $model.selectedID) {
-                ForEach(model.groupedVisible(), id: \.0) { section, rows in
-                    Section(section.title) {
-                        ForEach(rows) { item in
-                            row(item)
-                                .tag(item.id)
-                                .contextMenu { contextMenu(item) }
-                                .onTapGesture(count: 2) { model.paste(mode: .automatic, itemID: item.id) }
-                        }
+        GeometryReader { proxy in
+            let width = Double(proxy.size.width)
+            let height = Double(proxy.size.height)
+            Group {
+                if HistoryPanelLayout.placesPreviewBelowList(containerWidth: width) {
+                    VStack(spacing: 0) {
+                        historyList
+                        Divider()
+                        preview
+                            .frame(height: CGFloat(HistoryPanelLayout.previewHeight(in: height)))
+                    }
+                } else {
+                    HStack(spacing: 0) {
+                        historyList
+                            .frame(minWidth: 280)
+                        Divider()
+                        preview
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 }
             }
-            .frame(minWidth: 280)
-            Divider()
-            preview
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var historyList: some View {
+        List(selection: $model.selectedID) {
+            ForEach(model.groupedVisible(), id: \.0) { section, rows in
+                Section(section.title) {
+                    ForEach(rows) { item in
+                        row(item)
+                            .tag(item.id)
+                            .contextMenu { contextMenu(item) }
+                            .onTapGesture(count: 2) { model.paste(mode: .automatic, itemID: item.id) }
+                    }
+                }
+            }
         }
     }
 

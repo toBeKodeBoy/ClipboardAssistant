@@ -164,6 +164,16 @@ final class LogicTests: XCTestCase {
         XCTAssertTrue(unlimited.contains("不限制") || unlimited.contains("No limit"))
     }
 
+    func testNarrowPanelPlacesPreviewBelowTheList() {
+        XCTAssertTrue(HistoryPanelLayout.placesPreviewBelowList(containerWidth: 640))
+        XCTAssertTrue(HistoryPanelLayout.placesPreviewBelowList(containerWidth: 719))
+        XCTAssertFalse(HistoryPanelLayout.placesPreviewBelowList(containerWidth: 720))
+        XCTAssertFalse(HistoryPanelLayout.placesPreviewBelowList(containerWidth: 960))
+        XCTAssertEqual(HistoryPanelLayout.previewHeight(in: 400), 168, accuracy: 0.001)
+        XCTAssertEqual(HistoryPanelLayout.previewHeight(in: 200), 110, accuracy: 0.001)
+        XCTAssertEqual(HistoryPanelLayout.previewHeight(in: 1000), 420, accuracy: 0.001)
+    }
+
     func testGroupingPlacesRecentUnpinnedInJustNow() {
         let item = sample(id: "1", lastUsedAt: Date())
         XCTAssertEqual(HistoryGrouping.section(for: item), .justNow)

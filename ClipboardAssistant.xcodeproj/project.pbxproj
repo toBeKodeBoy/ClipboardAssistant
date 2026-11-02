@@ -21,6 +21,7 @@
 		A100000000000000000001FE /* CaptureBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000B /* CaptureBuilder.swift */; };
 		A100000000000000000001FF /* CaptureMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000C /* CaptureMonitor.swift */; };
 		A10000000000000000000200 /* HistoryPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000D /* HistoryPanelView.swift */; };
+		A10000000000000000000332 /* HistoryPanelLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000032 /* HistoryPanelLayout.swift */; };
 		A10000000000000000000201 /* PasteService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000E /* PasteService.swift */; };
 		A10000000000000000000202 /* PrivacyGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000F /* PrivacyGate.swift */; };
 		A10000000000000000000203 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000010 /* AppSettings.swift */; };
@@ -58,6 +59,7 @@
 		A1000000000000000000000B /* CaptureBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureBuilder.swift; sourceTree = "<group>"; };
 		A1000000000000000000000C /* CaptureMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureMonitor.swift; sourceTree = "<group>"; };
 		A1000000000000000000000D /* HistoryPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryPanelView.swift; sourceTree = "<group>"; };
+		A10000000000000000000032 /* HistoryPanelLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryPanelLayout.swift; sourceTree = "<group>"; };
 		A1000000000000000000000E /* PasteService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasteService.swift; sourceTree = "<group>"; };
 		A1000000000000000000000F /* PrivacyGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyGate.swift; sourceTree = "<group>"; };
 		A10000000000000000000010 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
@@ -186,6 +188,7 @@
 		A100000000000000000007D5 /* History */ = {
 			isa = PBXGroup;
 			children = (
+				A10000000000000000000032 /* HistoryPanelLayout.swift */,
 				A1000000000000000000000D /* HistoryPanelView.swift */,
 			);
 			path = History;
@@ -291,6 +294,7 @@
 				A10000000000000000000330 /* HistoryCounts.swift */,
 				A100000000000000000001FE /* CaptureBuilder.swift */,
 				A100000000000000000001FF /* CaptureMonitor.swift */,
+				A10000000000000000000332 /* HistoryPanelLayout.swift */,
 				A10000000000000000000200 /* HistoryPanelView.swift */,
 				A10000000000000000000201 /* PasteService.swift */,
 				A10000000000000000000202 /* PrivacyGate.swift */,

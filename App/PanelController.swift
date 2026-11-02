@@ -5,7 +5,8 @@ import SwiftUI
 /**
  * 主面板窗口。
  *
- * 使用 nonactivatingPanel，呼出时不抢走原应用焦点。打开时记下前台应用；关闭时不改剪切板。
+ * 使用 nonactivatingPanel，呼出时不抢走原应用焦点。becomesKeyOnlyIfNeeded 关闭后，
+ * 打开时面板成为关键窗口并聚焦搜索框。打开时记下前台应用；关闭时不改剪切板。
  * 全局热键调用方传入屏幕中心，菜单打开则使用「面板位置」设置。
  *
  * @author toBeKodeBoy
@@ -34,6 +35,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         super.init()
         panel.title = L10n.text("剪切板助手", "Clipboard Assistant")
         panel.isFloatingPanel = true
+        panel.becomesKeyOnlyIfNeeded = false
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.titleVisibility = .hidden
@@ -69,7 +71,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     /**
      * 显示主面板。
      *
-     * 默认先记下前台应用并清掉上一次提示。粘贴失败后重新打开时两者都跳过，以保留提示和原目标。
+     * 默认先记下前台应用并清掉上一次提示，再聚焦搜索框。粘贴失败后重新打开时前两项都跳过，以保留提示和原目标。
      *
      * @param rememberingFrontApp 是否把当前前台应用记为粘贴目标
      * @param clearingBanner 是否清掉底部提示
@@ -91,6 +93,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.makeKeyAndOrderFront(nil)
         installKeyMonitor()
         installOutsideMonitor()
+        focusSearchField()
     }
 
     /**
@@ -99,6 +102,64 @@ final class PanelController: NSObject, NSWindowDelegate {
     func showFeedback() {
         guard !panel.isVisible else { return }
         show(rememberingFrontApp: false, clearingBanner: false)
+    }
+
+    /**
+     * 立刻聚焦搜索框，并在下一轮主队列复查。
+     *
+     * 打开时会发布辅助功能和提示，SwiftUI 可能随后把焦点交给列表。
+     * 复查看的是当前第一响应者，焦点已不在搜索框时再设一次。
+     */
+    private func focusSearchField() {
+        panel.contentView?.layoutSubtreeIfNeeded()
+        makeSearchFieldFirstResponder(reportFailure: false)
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.panel.isVisible, !self.isSearchEditing else { return }
+                self.makeSearchFieldFirstResponder(reportFailure: true)
+            }
+        }
+    }
+
+    /**
+     * 在面板内容里找到搜索框并请求焦点。
+     *
+     * 主面板只有这一个文本框。窗口尚未成为关键窗口时，成为第一响应者也会把它变成关键窗口。
+     * 同步尝试失败先不记录，留给复查；复查仍失败时写一条不含剪切板正文的日志。
+     *
+     * @param reportFailure 失败时是否写日志
+     */
+    private func makeSearchFieldFirstResponder(reportFailure: Bool) {
+        guard panel.isVisible else { return }
+        guard let textField = firstTextField(in: panel.contentView) else {
+            if reportFailure {
+                AppLog.store.error("search field missing")
+            }
+            return
+        }
+        if panel.makeFirstResponder(textField) { return }
+        if reportFailure {
+            AppLog.store.error("search field refused first responder")
+        }
+    }
+
+    /**
+     * 深度优先查找第一个文本框。
+     *
+     * @param view 起始视图。为空时返回空
+     * @return 找到的文本框
+     */
+    private func firstTextField(in view: NSView?) -> NSTextField? {
+        guard let view else { return nil }
+        if let field = view as? NSTextField {
+            return field
+        }
+        for subview in view.subviews {
+            if let field = firstTextField(in: subview) {
+                return field
+            }
+        }
+        return nil
     }
 
     /**

@@ -43,7 +43,7 @@ v1 只做本地历史的采集、搜索、预览和粘贴。片段库、规则�
 - `level = .floating`
 - `collectionBehavior` 包含 `canJoinAllSpaces`、`fullScreenAuxiliary`
 - `hidesOnDeactivate = false`，避免一切到其他桌面就消失
-- 可以成为关键窗口，从而接收搜索和方向键
+- `becomesKeyOnlyIfNeeded` 为 false。打开后成为关键窗口并聚焦搜索框，从而直接输入搜索和方向键
 - 不把应用激活成普通前台应用，原应用的焦点得以保留
 
 打开面板时记下当时的前台应用，作为本次粘贴目标。关闭面板不修改剪切板。

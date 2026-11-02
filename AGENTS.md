@@ -156,3 +156,17 @@ docs: expand README with setup, privacy, and retention
 只有用户明确要求时才执行 Git 提交、合并或 push；否则仅提供建议命令和提交说明，不自动执行。
 
 合进 `main` 用 squash merge，主题就是合并后的那条提交说明。不要提交密钥、剪切板正文或 `logs/`。用户没要求时不要 push，不要改 git 配置，不要 `--no-verify`，不要 force push。
+
+## Cursor Cloud specific instructions
+
+Cloud Agent 的虚拟机是 Ubuntu，不是 Mac。本应用是 macOS 14 菜单栏程序，依赖 AppKit、SwiftUI 和 Carbon。这里没有 `xcodebuild`，`import AppKit` 会失败，不能构建或启动 `ClipboardAssistant.app`。第 6、7 节的 `xcodebuild` 命令仍然只在 macOS 14 和 Xcode 上执行。
+
+虚拟机里准备好的工具：
+
+- Swift 6.4.2，`/usr/local/bin/swift` 指向 `/opt/swift`。工程的 `SWIFT_VERSION` 是 5，编译时加 `-swift-version 5`。
+- `libsqlite3-dev`。Linux 上的 Swift 没有系统 `SQLite3` 模块，模块图在 `/usr/local/include/SQLite3/module.modulemap`。编译 `Storage/SQLiteDatabase.swift` 时加上 `-I /usr/local/include`。
+- `FileManager` 的应用支持目录在 Linux 上是 `~/.local/share/ClipboardAssistant`，不是 macOS 的 `~/Library/Application Support/ClipboardAssistant`。
+
+能在 Linux 上单独编译的源文件：`Domain/` 里除 `ContentHash.swift` 以外的文件、`Features/Privacy/PrivacyGate.swift`、`Storage/AppPaths.swift`、`Storage/SQLiteDatabase.swift`。`ContentHash.swift` 使用 `NSBitmapImageRep`。`ClipboardItem.swift` 里的 `RelativeDateTimeFormatter` 不在 Linux Foundation 中，整文件编译需要调用方提供同名类型，产品代码不要为了 Linux 改掉它。
+
+不要把剪切板正文写进 `logs/`。

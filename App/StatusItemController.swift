@@ -37,6 +37,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         model.onHotkey = { [weak self] in
             self?.panel.toggle(placement: .center)
         }
+        model.onAppearanceChange = { [weak self] in
+            self?.applyAppearance()
+        }
     }
 
     /**
@@ -146,6 +149,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     /**
+     * 把当前外观写到主面板和设置窗口。
+     *
+     * 设置窗口还没创建时只更新主面板。
+     */
+    private func applyAppearance() {
+        panel.applyAppearance()
+        settingsWindow?.appearance = model.settings.appearance.nsAppearance
+    }
+
+    /**
      * 打开或前置设置窗口。
      */
     @objc private func openSettings() {
@@ -158,7 +171,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             window.isReleasedWhenClosed = false
             settingsWindow = window
         }
-        settingsWindow?.appearance = model.settings.appearance.nsAppearance
+        applyAppearance()
         settingsWindow?.center()
         settingsWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)

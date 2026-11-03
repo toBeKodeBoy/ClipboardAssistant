@@ -46,7 +46,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.delegate = self
         panel.minSize = NSSize(width: 420, height: 360)
         panel.contentViewController = NSHostingController(rootView: HistoryPanelView().environmentObject(model))
-        panel.appearance = model.settings.appearance.nsAppearance
+        applyAppearance()
         model.onPreparePaste = { [weak self] in
             self?.closePanel()
         }
@@ -85,7 +85,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         if clearingBanner {
             model.banner = nil
         }
-        panel.appearance = model.settings.appearance.nsAppearance
+        applyAppearance()
         var frame = panel.frame
         frame.size = NSSize(width: model.settings.panelWidth, height: model.settings.panelHeight)
         frame.origin = origin(for: frame.size, placement: placement)
@@ -94,6 +94,15 @@ final class PanelController: NSObject, NSWindowDelegate {
         installKeyMonitor()
         installOutsideMonitor()
         focusSearchField()
+    }
+
+    /**
+     * 把当前外观写到主面板。
+     *
+     * 面板已经打开时立刻切换，不必等下次 show。跟随系统时写入 nil，窗口改回跟随系统。
+     */
+    func applyAppearance() {
+        panel.appearance = model.settings.appearance.nsAppearance
     }
 
     /**

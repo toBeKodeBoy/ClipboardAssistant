@@ -209,6 +209,28 @@ final class LogicTests: XCTestCase {
         XCTAssertNil(session.confirm())
     }
 
+    func testAppearanceChoiceMapsToWindowAppearance() {
+        XCTAssertNil(AppearanceChoice.system.nsAppearance)
+        XCTAssertEqual(AppearanceChoice.light.nsAppearance?.name, .aqua)
+        XCTAssertEqual(AppearanceChoice.dark.nsAppearance?.name, .darkAqua)
+    }
+
+    @MainActor
+    func testChangingAppearanceNotifiesOpenWindows() throws {
+        let harness = try deleteHarness()
+        defer { harness.cleanup() }
+        var applied = 0
+        harness.model.settings.onAppearanceChange = { applied += 1 }
+        let current = harness.model.settings.appearance
+        harness.model.settings.appearance = current
+        XCTAssertEqual(applied, 0)
+        let next: AppearanceChoice = current == .dark ? .light : .dark
+        harness.model.settings.appearance = next
+        XCTAssertEqual(applied, 1)
+        harness.model.settings.appearance = .system
+        XCTAssertEqual(applied, 2)
+    }
+
     func testCancelDropsPendingPinnedDelete() {
         var session = ItemDeleteSession()
         _ = session.request(selectedID: "pin", isPinned: true)

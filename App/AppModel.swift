@@ -294,19 +294,8 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /**
-     * 把当前外观套到已经打开的窗口上。
-     *
-     * 设置页改外观时调用。窗口控制器负责写 NSAppearance，不必等面板下次打开。
-     */
-    func applyAppearance() {
-        onAppearanceChange?()
-    }
-
     /** 全局热键按下时调用，由状态栏控制器打开或关闭面板。 */
     var onHotkey: (() -> Void)?
-    /** 外观变更时调用，由状态栏控制器写到主面板和设置窗口。 */
-    var onAppearanceChange: (() -> Void)?
     /** 发送 ⌘V 之前调用，由面板控制器先关掉面板。 */
     var onPreparePaste: (() -> Void)?
     /** 自动粘贴失败时调用，由面板控制器重新打开并保留提示。 */

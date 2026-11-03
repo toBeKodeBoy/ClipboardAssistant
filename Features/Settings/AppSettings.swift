@@ -120,7 +120,21 @@ enum PauseChoice: String, CaseIterable, Identifiable {
  */
 final class AppSettings: ObservableObject {
     @Published var launchAtLogin: Bool { didSet { persist(Keys.launchAtLogin, launchAtLogin) } }
-    @Published var appearance: AppearanceChoice { didSet { persist(Keys.appearance, appearance.rawValue) } }
+    /**
+     * 外观。变更后立刻持久化，并通知已经打开的窗口。
+     *
+     * 初始化时的赋值不会触发 didSet。新旧值相同时只写偏好，不重复通知。
+     */
+    @Published var appearance: AppearanceChoice {
+        didSet {
+            persist(Keys.appearance, appearance.rawValue)
+            if appearance != oldValue {
+                onAppearanceChange?()
+            }
+        }
+    }
+    /** 外观发生变化时调用，由状态栏控制器写到主面板和设置窗口。 */
+    var onAppearanceChange: (() -> Void)?
     @Published var pasteBehavior: PasteBehavior { didSet { persist(Keys.pasteBehavior, pasteBehavior.rawValue) } }
     @Published var panelPlacement: PanelPlacement { didSet { persist(Keys.panelPlacement, panelPlacement.rawValue) } }
     @Published var ignoreConcealed: Bool { didSet { persist(Keys.ignoreConcealed, ignoreConcealed) } }

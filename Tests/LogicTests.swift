@@ -216,13 +216,19 @@ final class LogicTests: XCTestCase {
     }
 
     @MainActor
-    func testApplyAppearanceNotifiesOpenWindows() throws {
+    func testChangingAppearanceNotifiesOpenWindows() throws {
         let harness = try deleteHarness()
         defer { harness.cleanup() }
         var applied = 0
-        harness.model.onAppearanceChange = { applied += 1 }
-        harness.model.applyAppearance()
+        harness.model.settings.onAppearanceChange = { applied += 1 }
+        let current = harness.model.settings.appearance
+        harness.model.settings.appearance = current
+        XCTAssertEqual(applied, 0)
+        let next: AppearanceChoice = current == .dark ? .light : .dark
+        harness.model.settings.appearance = next
         XCTAssertEqual(applied, 1)
+        harness.model.settings.appearance = .system
+        XCTAssertEqual(applied, 2)
     }
 
     func testCancelDropsPendingPinnedDelete() {

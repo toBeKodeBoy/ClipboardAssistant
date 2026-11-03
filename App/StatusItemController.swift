@@ -37,7 +37,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         model.onHotkey = { [weak self] in
             self?.panel.toggle(placement: .center)
         }
-        model.onAppearanceChange = { [weak self] in
+        model.settings.onAppearanceChange = { [weak self] in
             self?.applyAppearance()
         }
     }

@@ -70,9 +70,6 @@ struct SettingsView: View {
             Picker(L10n.text("外观", "Appearance"), selection: $model.settings.appearance) {
                 ForEach(AppearanceChoice.allCases) { Text($0.title).tag($0) }
             }
-            .onChange(of: model.settings.appearance) { _, _ in
-                model.applyAppearance()
-            }
             Picker(L10n.text("粘贴行为", "Paste behavior"), selection: $model.settings.pasteBehavior) {
                 ForEach(PasteBehavior.allCases) { Text($0.title).tag($0) }
             }

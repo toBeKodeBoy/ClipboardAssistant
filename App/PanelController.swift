@@ -169,7 +169,7 @@ final class PanelController: NSObject, NSWindowDelegate {
      */
     func closePanel() {
         model.confirmClearAll = false
-        model.confirmPinnedDelete = false
+        model.cancelPinnedDelete()
         model.settings.panelWidth = panel.frame.width
         model.settings.panelHeight = panel.frame.height
         panel.orderOut(nil)

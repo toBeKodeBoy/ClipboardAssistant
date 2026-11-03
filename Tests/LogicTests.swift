@@ -183,24 +183,110 @@ final class LogicTests: XCTestCase {
     }
 
     func testDeleteKeyOnPinnedItemPresentsConfirmation() {
-        XCTAssertEqual(
-            ItemDeleteRouting.step(hasSelection: true, isPinned: true),
-            .presentPinnedConfirmation
-        )
-        XCTAssertEqual(
-            ItemDeleteRouting.step(hasSelection: true, isPinned: false),
-            .deleteImmediately
-        )
-        XCTAssertEqual(
-            ItemDeleteRouting.step(hasSelection: false, isPinned: true),
-            .ignored
-        )
+        var session = ItemDeleteSession()
+        XCTAssertEqual(session.request(selectedID: "pin", isPinned: true), .confirmPinned(id: "pin"))
+        XCTAssertTrue(session.confirmationPresented)
+        XCTAssertEqual(session.pendingID, "pin")
+        XCTAssertTrue(ItemDeleteRequest.confirmPinned(id: "pin").clearsBanner)
+
+        var plain = ItemDeleteSession()
+        XCTAssertEqual(plain.request(selectedID: "text", isPinned: false), .deleteNow(id: "text"))
+        XCTAssertFalse(plain.confirmationPresented)
+        XCTAssertNil(plain.pendingID)
+        XCTAssertFalse(ItemDeleteRequest.deleteNow(id: "text").clearsBanner)
+
+        var missing = ItemDeleteSession()
+        XCTAssertEqual(missing.request(selectedID: nil, isPinned: true), .ignored)
+        XCTAssertFalse(missing.confirmationPresented)
+    }
+
+    func testPinnedConfirmationDeletesTheItemThatOpenedTheDialog() {
+        var session = ItemDeleteSession()
+        _ = session.request(selectedID: "pin", isPinned: true)
+        XCTAssertEqual(session.confirm(), "pin")
+        XCTAssertFalse(session.confirmationPresented)
+        XCTAssertNil(session.pendingID)
+        XCTAssertNil(session.confirm())
+    }
+
+    func testCancelDropsPendingPinnedDelete() {
+        var session = ItemDeleteSession()
+        _ = session.request(selectedID: "pin", isPinned: true)
+        session.cancel()
+        XCTAssertFalse(session.confirmationPresented)
+        XCTAssertNil(session.pendingID)
+        XCTAssertNil(session.confirm())
     }
 
     func testPinnedDeleteConfirmationYieldsKeysLikeClearAll() {
         XCTAssertTrue(ItemDeleteRouting.yieldsKeysToConfirmation(confirmClearAll: false, confirmPinnedDelete: true))
         XCTAssertTrue(ItemDeleteRouting.yieldsKeysToConfirmation(confirmClearAll: true, confirmPinnedDelete: false))
+        XCTAssertTrue(ItemDeleteRouting.yieldsKeysToConfirmation(confirmClearAll: true, confirmPinnedDelete: true))
         XCTAssertFalse(ItemDeleteRouting.yieldsKeysToConfirmation(confirmClearAll: false, confirmPinnedDelete: false))
+    }
+
+    @MainActor
+    func testModelPinnedDeleteKeepsTheItemUntilTheOriginalOneIsConfirmed() throws {
+        let harness = try deleteHarness()
+        defer { harness.cleanup() }
+        let model = harness.model
+        let pinned = try harness.insert("pinned-body")
+        let other = try harness.insert("other-body")
+        try model.store.setPinned(id: pinned.id, pinned: true)
+        model.reload()
+        model.selectedID = pinned.id
+        model.banner = "旧提示"
+
+        model.deleteSelected()
+
+        XCTAssertTrue(model.confirmPinnedDelete)
+        XCTAssertEqual(model.pendingPinnedDeleteID, pinned.id)
+        XCTAssertNil(model.banner)
+        XCTAssertEqual(try model.store.count(), 2)
+
+        model.selectedID = other.id
+        model.deletePinned(id: model.pendingPinnedDeleteID)
+
+        let remaining = try model.store.fetchAll().map(\.id)
+        XCTAssertEqual(remaining, [other.id])
+        XCTAssertFalse(model.confirmPinnedDelete)
+        XCTAssertNil(model.pendingPinnedDeleteID)
+    }
+
+    @MainActor
+    func testModelUnpinnedDeleteRemovesTheItemWithoutConfirmation() throws {
+        let harness = try deleteHarness()
+        defer { harness.cleanup() }
+        let model = harness.model
+        let item = try harness.insert("plain-body")
+        model.reload()
+        model.selectedID = item.id
+        model.banner = "旧提示"
+
+        model.deleteSelected()
+
+        XCTAssertFalse(model.confirmPinnedDelete)
+        XCTAssertNil(model.pendingPinnedDeleteID)
+        XCTAssertEqual(try model.store.count(), 0)
+        XCTAssertEqual(model.banner, L10n.text("已删除，⌘Z 撤销", "Deleted. Press ⌘Z to undo."))
+    }
+
+    @MainActor
+    func testModelCancelPinnedDeleteLeavesTheItem() throws {
+        let harness = try deleteHarness()
+        defer { harness.cleanup() }
+        let model = harness.model
+        let pinned = try harness.insert("pinned-cancel")
+        try model.store.setPinned(id: pinned.id, pinned: true)
+        model.reload()
+        model.selectedID = pinned.id
+        model.deleteSelected()
+        model.cancelPinnedDelete()
+        model.deletePinned(id: nil)
+
+        XCTAssertFalse(model.confirmPinnedDelete)
+        XCTAssertNil(model.pendingPinnedDeleteID)
+        XCTAssertEqual(try model.store.fetchAll().map(\.id), [pinned.id])
     }
 
     func testLogsDirectoryLivesInTheProject() throws {
@@ -227,6 +313,35 @@ final class LogicTests: XCTestCase {
         XCTAssertTrue(today.contains("2026-10-27 13:00:00.000 info store launch"))
         let next = try String(contentsOf: directory.appendingPathComponent("clipboard-2026-10-28.log"), encoding: .utf8)
         XCTAssertTrue(next.contains("error store database open failed"))
+    }
+
+    private struct DeleteHarness {
+        let model: AppModel
+        let directory: URL
+        let suite: String
+
+        @MainActor
+        func insert(_ text: String) throws -> ClipboardItem {
+            let captured = try XCTUnwrap(CaptureBuilder.build(PasteboardSnapshot(items: [
+                PasteboardItemData(values: [PasteboardUTI.plain: Data(text.utf8)])
+            ])))
+            return try model.store.insertOrTouch(captured, sourceBundleID: "com.example", sourceName: "Example")
+        }
+
+        func cleanup() {
+            try? FileManager.default.removeItem(at: directory)
+            UserDefaults.standard.removePersistentDomain(forName: suite)
+        }
+    }
+
+    @MainActor
+    private func deleteHarness() throws -> DeleteHarness {
+        let suite = "clipboard-delete-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let store = try HistoryStore(directory: directory)
+        let model = AppModel(store: store, settings: AppSettings(defaults: defaults))
+        return DeleteHarness(model: model, directory: directory, suite: suite)
     }
 
     private func utcDate(year: Int, month: Int, day: Int, hour: Int) -> Date {

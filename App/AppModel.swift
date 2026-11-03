@@ -27,6 +27,14 @@ final class AppModel: ObservableObject {
     private var targetBundleID: String?
     private var undoItem: ClipboardItem?
     private var undoRepresentations: [CapturedRepresentation] = []
+    private var deleteSession = ItemDeleteSession()
+
+    /**
+     * 打开置顶删除确认框时记下的条目标识。
+     *
+     * 确认按钮用它删除，不跟随确认框打开后的选中变化。
+     */
+    var pendingPinnedDeleteID: String? { deleteSession.pendingID }
 
     /**
      * 用已打开的存储和偏好创建模型。
@@ -152,28 +160,76 @@ final class AppModel: ObservableObject {
     /**
      * 删除当前选中条目。
      *
-     * 置顶条目先打开确认框，确认后由 deletePinnedConfirmed 删除。
+     * 置顶条目先打开确认框，并清掉底部旧提示。确认后由 deletePinned 删除打开时记下的那一条。
      * 普通条目删除后可在面板关闭前用 ⌘Z 撤销。
      */
     func deleteSelected() {
         let item = items.first { $0.id == selectedID }
-        switch ItemDeleteRouting.step(hasSelection: item != nil, isPinned: item?.pinned == true) {
+        let request = deleteSession.request(selectedID: item?.id, isPinned: item?.pinned == true)
+        if request.clearsBanner {
+            banner = nil
+        }
+        switch request {
         case .ignored:
             return
-        case .presentPinnedConfirmation:
+        case .confirmPinned:
             confirmPinnedDelete = true
-        case .deleteImmediately:
-            guard let item else { return }
-            delete(id: item.id, item: item)
+        case .deleteNow(let id):
+            if confirmPinnedDelete {
+                confirmPinnedDelete = false
+            }
+            guard let item = items.first(where: { $0.id == id }) else { return }
+            delete(id: id, item: item)
         }
     }
 
     /**
-     * 确认后删除当前置顶条目。
+     * 删除打开确认框时记下的置顶条目。
+     *
+     * explicitID 是确认按钮创建时带上的那条，避免确认框先关掉把会话清掉。
+     * 为空时用会话里记下的 id。之后选中项变了也不改删哪一条。
+     * 条目已经不在或不再置顶时不删。
+     *
+     * @param explicitID 确认按钮捕获的条目标识
      */
-    func deletePinnedConfirmed() {
-        guard let id = selectedID, let item = items.first(where: { $0.id == id }), item.pinned else { return }
+    func deletePinned(id explicitID: String?) {
+        let stored = deleteSession.confirm()
+        if confirmPinnedDelete {
+            confirmPinnedDelete = false
+        }
+        let id = explicitID ?? stored
+        guard let id, let item = items.first(where: { $0.id == id }), item.pinned else { return }
         delete(id: id, item: item)
+    }
+
+    /**
+     * 取消尚未确认的置顶删除。条目保留。
+     */
+    func cancelPinnedDelete() {
+        deleteSession.cancel()
+        if confirmPinnedDelete {
+            confirmPinnedDelete = false
+        }
+    }
+
+    /**
+     * 同步确认框开关。关掉时丢弃记下的条目，避免之后误删。
+     *
+     * 值没有变化时不再写回，防止确认框关闭和模型互相触发。
+     *
+     * @param presented 确认框是否显示
+     */
+    func setPinnedDeletePresented(_ presented: Bool) {
+        guard presented != confirmPinnedDelete else {
+            if !presented {
+                deleteSession.cancel()
+            }
+            return
+        }
+        confirmPinnedDelete = presented
+        if !presented {
+            deleteSession.cancel()
+        }
     }
 
     /**

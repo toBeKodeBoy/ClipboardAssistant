@@ -24,11 +24,37 @@ struct HistoryPanelView: View {
             footer
         }
         .frame(minWidth: 420, minHeight: 360)
-        .alert(L10n.text("删除置顶条目？", "Delete pinned item?"), isPresented: $model.confirmPinnedDelete) {
-            Button(L10n.text("删除", "Delete"), role: .destructive) { model.deletePinnedConfirmed() }
-            Button(L10n.text("取消", "Cancel"), role: .cancel) {}
+        .alert(L10n.text("删除置顶条目？", "Delete pinned item?"), isPresented: pinnedDeletePresented) {
+            pinnedDeleteActions(pendingID: model.pendingPinnedDeleteID)
         } message: {
             Text(L10n.text("这条内容已置顶。", "This item is pinned."))
+        }
+    }
+
+    /**
+     * 置顶删除确认框的开关。
+     *
+     * 关掉时通知模型丢掉记下的条目。确认按钮另行捕获打开时的 id。
+     */
+    private var pinnedDeletePresented: Binding<Bool> {
+        Binding(
+            get: { model.confirmPinnedDelete },
+            set: { model.setPinnedDeletePresented($0) }
+        )
+    }
+
+    /**
+     * 确认框按钮。删除使用打开确认框时记下的 id。
+     *
+     * @param pendingID 打开确认框时的条目标识
+     */
+    @ViewBuilder
+    private func pinnedDeleteActions(pendingID: String?) -> some View {
+        Button(L10n.text("删除", "Delete"), role: .destructive) {
+            model.deletePinned(id: pendingID)
+        }
+        Button(L10n.text("取消", "Cancel"), role: .cancel) {
+            model.cancelPinnedDelete()
         }
     }
 

@@ -165,10 +165,11 @@ final class PanelController: NSObject, NSWindowDelegate {
     /**
      * 关闭面板。
      *
-     * 取消尚未确认的清空，记下当前尺寸，并卸掉按键和面板外点击监听。不修改剪切板。
+     * 取消尚未确认的清空和删除置顶，记下当前尺寸，并卸掉按键和面板外点击监听。不修改剪切板。
      */
     func closePanel() {
         model.confirmClearAll = false
+        model.cancelPinnedDelete()
         model.settings.panelWidth = panel.frame.width
         model.settings.panelHeight = panel.frame.height
         panel.orderOut(nil)
@@ -251,14 +252,17 @@ final class PanelController: NSObject, NSWindowDelegate {
     /**
      * 处理主面板快捷键。
      *
-     * 清空确认框打开时把回车和 Esc 交给确认框。搜索框编辑中，Delete、左右方向键和 ⌘Z 交给输入框。
-     * ⌘⌫ 始终清空。回车按修饰键选择粘贴、只复制或纯文本。
+     * 清空或删除置顶的确认框打开时，把回车和 Esc 交给确认框。搜索框编辑中，Delete、左右方向键和 ⌘Z 交给输入框。
+     * ⌘⌫ 始终清空。回车按修饰键选择粘贴、只复制或纯文本。⌫ 删除当前条；置顶条目改为打开确认框。
      *
      * @param event 按键事件
      * @return 已消费时返回 true，调用方应吞掉事件
      */
     private func handle(_ event: NSEvent) -> Bool {
-        if model.confirmClearAll {
+        if ItemDeleteRouting.yieldsKeysToConfirmation(
+            confirmClearAll: model.confirmClearAll,
+            confirmPinnedDelete: model.confirmPinnedDelete
+        ) {
             return false
         }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -287,11 +291,7 @@ final class PanelController: NSObject, NSWindowDelegate {
             return true
         }
         if event.keyCode == UInt16(kVK_Delete) && !flags.contains(.command) {
-            if model.items.first(where: { $0.id == model.selectedID })?.pinned == true {
-                model.banner = L10n.text("置顶条目需要确认后再删除", "Pinned items need confirmation")
-            } else {
-                model.deleteSelected()
-            }
+            model.deleteSelected()
             return true
         }
         if flags.contains(.command) && event.charactersIgnoringModifiers?.lowercased() == "z" {

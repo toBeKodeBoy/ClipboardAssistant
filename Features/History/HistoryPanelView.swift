@@ -3,7 +3,6 @@ import SwiftUI
 
 struct HistoryPanelView: View {
     @EnvironmentObject private var model: AppModel
-    @State private var confirmPinnedDelete = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -25,7 +24,7 @@ struct HistoryPanelView: View {
             footer
         }
         .frame(minWidth: 420, minHeight: 360)
-        .alert(L10n.text("删除置顶条目？", "Delete pinned item?"), isPresented: $confirmPinnedDelete) {
+        .alert(L10n.text("删除置顶条目？", "Delete pinned item?"), isPresented: $model.confirmPinnedDelete) {
             Button(L10n.text("删除", "Delete"), role: .destructive) { model.deletePinnedConfirmed() }
             Button(L10n.text("取消", "Cancel"), role: .cancel) {}
         } message: {
@@ -230,11 +229,7 @@ struct HistoryPanelView: View {
         }
         Button(L10n.text("删除", "Delete"), role: .destructive) {
             model.selectedID = item.id
-            if item.pinned {
-                confirmPinnedDelete = true
-            } else {
-                model.deleteSelected()
-            }
+            model.deleteSelected()
         }
     }
 }

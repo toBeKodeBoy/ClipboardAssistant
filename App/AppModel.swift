@@ -17,6 +17,7 @@ final class AppModel: ObservableObject {
     @Published var selectedID: String?
     @Published var banner: String?
     @Published var confirmClearAll = false
+    @Published var confirmPinnedDelete = false
     @Published var accessibilityTrusted = false
 
     var settings: AppSettings
@@ -151,15 +152,20 @@ final class AppModel: ObservableObject {
     /**
      * 删除当前选中条目。
      *
-     * 置顶条目不直接删除，只提示需要确认。普通条目删除后可在面板关闭前用 ⌘Z 撤销。
+     * 置顶条目先打开确认框，确认后由 deletePinnedConfirmed 删除。
+     * 普通条目删除后可在面板关闭前用 ⌘Z 撤销。
      */
     func deleteSelected() {
-        guard let id = selectedID, let item = items.first(where: { $0.id == id }) else { return }
-        if item.pinned {
-            banner = L10n.text("置顶条目需要确认后再删除", "Pinned items need confirmation")
+        let item = items.first { $0.id == selectedID }
+        switch ItemDeleteRouting.step(hasSelection: item != nil, isPinned: item?.pinned == true) {
+        case .ignored:
             return
+        case .presentPinnedConfirmation:
+            confirmPinnedDelete = true
+        case .deleteImmediately:
+            guard let item else { return }
+            delete(id: item.id, item: item)
         }
-        delete(id: id, item: item)
     }
 
     /**

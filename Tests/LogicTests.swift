@@ -182,6 +182,27 @@ final class LogicTests: XCTestCase {
         XCTAssertEqual(HistoryGrouping.section(for: pinned), .pinned)
     }
 
+    func testDeleteKeyOnPinnedItemPresentsConfirmation() {
+        XCTAssertEqual(
+            ItemDeleteRouting.step(hasSelection: true, isPinned: true),
+            .presentPinnedConfirmation
+        )
+        XCTAssertEqual(
+            ItemDeleteRouting.step(hasSelection: true, isPinned: false),
+            .deleteImmediately
+        )
+        XCTAssertEqual(
+            ItemDeleteRouting.step(hasSelection: false, isPinned: true),
+            .ignored
+        )
+    }
+
+    func testPinnedDeleteConfirmationYieldsKeysLikeClearAll() {
+        XCTAssertTrue(ItemDeleteRouting.yieldsKeysToConfirmation(confirmClearAll: false, confirmPinnedDelete: true))
+        XCTAssertTrue(ItemDeleteRouting.yieldsKeysToConfirmation(confirmClearAll: true, confirmPinnedDelete: false))
+        XCTAssertFalse(ItemDeleteRouting.yieldsKeysToConfirmation(confirmClearAll: false, confirmPinnedDelete: false))
+    }
+
     func testLogsDirectoryLivesInTheProject() throws {
         let directory = try AppPaths.logsDirectory()
         XCTAssertEqual(directory.lastPathComponent, "logs")

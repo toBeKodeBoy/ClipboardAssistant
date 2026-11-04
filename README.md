@@ -105,6 +105,7 @@ xcodebuild -project ClipboardAssistant.xcodeproj -scheme ClipboardAssistant -des
 
 - [产品需求](docs/requirements.md)
 - [技术设计](docs/technical-design.md)
+- [功能清单](docs/剪切板助手%20功能清单.md)
 - [开发约定](AGENTS.md)
 - [签名与公证](Packaging/notarize.md)
 

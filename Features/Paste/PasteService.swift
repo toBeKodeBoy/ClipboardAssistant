@@ -145,6 +145,79 @@ enum PasteboardWriter {
     }
 
     /**
+     * 计算这次写回对应的去重哈希。
+     *
+     * 纯文本模式只写入纯文本，哈希按纯文本计算。原样写回沿用条目已有的内容哈希。
+     *
+     * @param item 要写回的历史条目
+     * @param mode 写入模式
+     * @return 采集回声需要比对的哈希
+     */
+    static func writtenHash(for item: ClipboardItem, mode: PasteMode) -> String {
+        if mode.writesPlainText {
+            return plainHash(for: item)
+        }
+        return item.contentHash
+    }
+
+    /**
+     * 收集这次写回的负载摘要。
+     *
+     * 纯文本模式只记纯文本哈希。原样写回记下去重哈希，以及每种负载的原始字节；图片再记像素哈希和编码无关摘要。
+     * 读回时只要还含有其中之一，就视为同一次写入。
+     *
+     * @param item 要写回的历史条目
+     * @param representations 该条目已保存的负载
+     * @param directory 负载文件所在目录
+     * @param mode 写入模式
+     * @return 写入侧摘要。至少包含去重哈希
+     */
+    static func writtenEchoDigests(item: ClipboardItem, representations: [StoredRepresentation], directory: URL, mode: PasteMode) -> Set<String> {
+        let hash = writtenHash(for: item, mode: mode)
+        if mode.writesPlainText {
+            return [hash]
+        }
+        var digests: Set<String> = [hash]
+        for representation in representations where !PasteboardUTI.markers.contains(representation.uti) && representation.uti != PasteboardUTI.fileURL && representation.uti != PasteboardUTI.filenames {
+            let data = representationData(representation, directory: directory)
+            guard let data else { continue }
+            digests.insert(ContentHash.sha256(data))
+            if representation.uti == PasteboardUTI.plain || representation.uti == PasteboardUTI.url,
+               let text = String(data: data, encoding: .utf8) {
+                digests.insert(ContentHash.text(text))
+            } else if representation.uti == PasteboardUTI.utf16, let text = String(data: data, encoding: .utf16) {
+                digests.insert(ContentHash.text(text))
+            }
+            if PasteboardUTI.imageTypes.contains(representation.uti) {
+                digests.insert(ContentHash.imageData(data))
+                if let canonical = ContentHash.canonicalImage(data) {
+                    digests.insert(canonical)
+                }
+            }
+        }
+        return digests
+    }
+
+    /**
+     * 读出一种已保存负载的字节。
+     *
+     * 文件负载从目录读取。短文本按 UTF-8 字节参与摘要。
+     *
+     * @param representation 已保存的负载
+     * @param directory 负载文件所在目录
+     * @return 负载字节；文件缺失时返回 nil
+     */
+    private static func representationData(_ representation: StoredRepresentation, directory: URL) -> Data? {
+        if let path = representation.relativePath {
+            return try? Data(contentsOf: directory.appendingPathComponent(path))
+        }
+        if let inline = representation.inlineValue {
+            return Data(inline.utf8)
+        }
+        return nil
+    }
+
+    /**
      * 从负载中解析文件 URL。
      *
      * @param representations 已保存的负载
@@ -179,7 +252,8 @@ final class PasteService {
      * @param mode 用户选择的粘贴模式
      * @param targetBundleID 打开面板时记下的前台应用
      * @param behavior 通用设置里的粘贴行为。为只复制时，automatic 改为 copyOnly
-     * @param noteChangeCount 把本次写入的 changeCount 交给采集器忽略
+     * @param beginSelfWrite 写之前记下即将写入的哈希和负载摘要，返回递增记号
+     * @param finishSelfWrite 写入完成后把记号和 changeCount 交给采集器，打开 1 秒窗口
      * @param prepareForKeystroke 发送按键前的准备，调用方在这里关闭面板
      * @param completion 写完或发送按键后的结果，可能晚于本方法返回
      */
@@ -190,7 +264,8 @@ final class PasteService {
         mode: PasteMode,
         targetBundleID: String?,
         behavior: PasteBehavior,
-        noteChangeCount: (Int) -> Void,
+        beginSelfWrite: (String, Set<String>) -> UInt64,
+        finishSelfWrite: (UInt64, Int) -> Void,
         prepareForKeystroke: () -> Void = {},
         completion: @escaping (PasteOutcome) -> Void
     ) {
@@ -200,8 +275,12 @@ final class PasteService {
             return
         }
         let effective: PasteMode = behavior == .copyOnly && mode == .automatic ? .copyOnly : mode
+        let token = beginSelfWrite(
+            PasteboardWriter.writtenHash(for: item, mode: effective),
+            PasteboardWriter.writtenEchoDigests(item: item, representations: representations, directory: directory, mode: effective)
+        )
         let count = PasteboardWriter.write(item: item, representations: representations, directory: directory, mode: effective)
-        noteChangeCount(count)
+        finishSelfWrite(token, count)
         let modeName = effective.logName
         let kind = item.kind.rawValue
         guard effective.sendsKeystroke else {

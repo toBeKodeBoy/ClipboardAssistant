@@ -21,8 +21,8 @@ final class CaptureMonitor {
     private var timer: Timer?
     /** 上次观察到的 changeCount。 */
     private var lastChangeCount: Int
-    /** 本应用写回剪切板后应忽略的 changeCount。 */
-    private var ignoredCounts = Set<Int>()
+    /** 本应用写回后 1 秒内的同哈希抑制。 */
+    private var selfWrites = SelfWriteSuppression()
     /** 最近一次检测到安全输入的时间，用于结束后 1 秒内继续跳过。 */
     private var lastSecureInputAt: Date?
     /** 解码和建条目使用的串行队列。 */
@@ -65,21 +65,38 @@ final class CaptureMonitor {
     }
 
     /**
-     * 忽略本应用自己写入引起的下一次变化。
+     * 写剪切板之前记下即将写入的哈希。
      *
-     * @param count 写入后的 changeCount
+     * 只调用这里不会抑制采集，写入完成后再调用 finishSelfWrite。
+     *
+     * @param hash 即将写入的去重哈希
+     * @param digests 即将写入的负载摘要
+     * @return 本次写入的递增记号
      */
-    func ignoreChangeCount(_ count: Int) {
-        ignoredCounts.insert(count)
+    func beginSelfWrite(hash: String, digests: Set<String> = []) -> UInt64 {
+        selfWrites.begin(hash: hash, digests: digests)
+    }
+
+    /**
+     * 写入完成后打开 1 秒同哈希窗口。
+     *
+     * @param token beginSelfWrite 返回的记号
+     * @param changeCount 写入后的 changeCount
+     * @param now 写入完成的时间
+     */
+    func finishSelfWrite(token: UInt64, changeCount: Int, now: Date = Date()) {
+        selfWrites.finish(token: token, changeCount: changeCount, now: now)
     }
 
     /**
      * 检查一次剪切板是否变化，并在允许时采集。
      *
      * 暂停、本应用、安全输入及其结束后 1 秒、隐私门禁拒绝的内容都跳过。
+     * 本应用刚写回的变化在建条目后丢弃，系统补上的类型也算同一次写入。
      */
     private func poll() {
         guard let settings else { return }
+        selfWrites.prune(now: Date())
         settings.refreshPause()
         if SecureInput.isEnabled() {
             lastSecureInputAt = Date()
@@ -88,10 +105,6 @@ final class CaptureMonitor {
         let count = pasteboard.changeCount
         guard count != lastChangeCount else { return }
         lastChangeCount = count
-        if ignoredCounts.remove(count) != nil {
-            AppLog.capture.info("skip self-write")
-            return
-        }
         let front = FrontmostApp.current()
         let secureNow = SecureInput.isEnabled()
         let secureSticky = !settings.recordDuringSecureInput
@@ -132,10 +145,17 @@ final class CaptureMonitor {
             let kind = captured.kind.rawValue
             let oversize = captured.oversize
             let bytes = captured.byteSize
-            AppLog.capture.info("captured kind=\(kind) oversize=\(oversize) bytes=\(bytes)")
+            var digests = CaptureBuilder.echoDigests(snapshot)
+            digests.insert(captured.contentHash)
             let sourceName = snapshot.hasRemoteMarker ? L10n.text("通用剪贴板", "Universal Clipboard") : front.name
             DispatchQueue.main.async { [weak self] in
-                self?.onCaptured?(captured, front.bundleID, sourceName)
+                guard let self else { return }
+                if self.selfWrites.shouldIgnore(changeCount: count, hash: captured.contentHash, digests: digests, now: Date()) {
+                    AppLog.capture.info("skip self-write")
+                    return
+                }
+                AppLog.capture.info("captured kind=\(kind) oversize=\(oversize) bytes=\(bytes)")
+                self.onCaptured?(captured, front.bundleID, sourceName)
             }
         }
     }

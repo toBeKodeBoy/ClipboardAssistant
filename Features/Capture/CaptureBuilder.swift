@@ -217,6 +217,40 @@ enum CaptureBuilder {
     }
 
     /**
+     * 收集一次读回里能用来认出自身写入的摘要。
+     *
+     * 每种类型的原始字节都计入。图片同时计入像素哈希和编码无关摘要，避免系统补了另一种编码后只剩新的去重哈希。
+     * 不包含机密、临时和远程标记。
+     *
+     * @param snapshot 已读取的剪切板快照
+     * @return 负载摘要
+     */
+    static func echoDigests(_ snapshot: PasteboardSnapshot) -> Set<String> {
+        var digests = Set<String>()
+        let values = merged(snapshot)
+        for (uti, data) in values where !PasteboardUTI.markers.contains(uti) && uti != PasteboardUTI.fileURL && uti != PasteboardUTI.filenames {
+            digests.insert(ContentHash.sha256(data))
+            if PasteboardUTI.imageTypes.contains(uti) {
+                digests.insert(ContentHash.imageData(data))
+                if let canonical = ContentHash.canonicalImage(data) {
+                    digests.insert(canonical)
+                }
+            }
+        }
+        if let plain = plainText(from: values) {
+            digests.insert(ContentHash.text(plain))
+        }
+        let files = fileFingerprints(in: snapshot)
+        if !files.isEmpty {
+            digests.insert(ContentHash.files(files))
+        }
+        for digest in mergedDigests(snapshot).values {
+            digests.insert(digest)
+        }
+        return digests
+    }
+
+    /**
      * 合并各项中的类型数据。
      *
      * 同一 UTI 保留先出现的数据。

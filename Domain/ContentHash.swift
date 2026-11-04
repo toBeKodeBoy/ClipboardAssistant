@@ -56,6 +56,41 @@ enum ContentHash {
     }
 
     /**
+     * 计算与编码无关的图片摘要。
+     *
+     * 画到同一套 RGBA8 位图上再哈希。PNG 和 TIFF 像素相同时摘要相同。
+     * 边长过大或无法解码时返回空，调用方改用原始字节。
+     *
+     * @param data 图片原始数据
+     * @return SHA-256 十六进制摘要；无法归一化时返回 nil
+     */
+    static func canonicalImage(_ data: Data) -> String? {
+        guard let rep = NSBitmapImageRep(data: data), let source = rep.cgImage else { return nil }
+        let width = source.width
+        let height = source.height
+        guard width > 0, height > 0, height <= 8_000_000, width <= 8_000_000 / height else { return nil }
+        let rowBytes = width * 4
+        var pixels = [UInt8](repeating: 0, count: rowBytes * height)
+        let bitmapInfo = CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue
+        let drawn = pixels.withUnsafeMutableBytes { raw -> Bool in
+            guard let base = raw.baseAddress,
+                  let context = CGContext(
+                    data: base,
+                    width: width,
+                    height: height,
+                    bitsPerComponent: 8,
+                    bytesPerRow: rowBytes,
+                    space: CGColorSpaceCreateDeviceRGB(),
+                    bitmapInfo: bitmapInfo
+                  ) else { return false }
+            context.draw(source, in: CGRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height)))
+            return true
+        }
+        guard drawn else { return nil }
+        return sha256(Data(pixels))
+    }
+
+    /**
      * 计算文件列表哈希。
      *
      * 路径按字典序排列后，与文件大小、修改时间一起摘要。内容本身不参与哈希。

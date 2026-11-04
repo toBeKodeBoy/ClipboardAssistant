@@ -20,6 +20,7 @@
 		A10000000000000000000330 /* HistoryCounts.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000030 /* HistoryCounts.swift */; };
 		A100000000000000000001FE /* CaptureBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000B /* CaptureBuilder.swift */; };
 		A100000000000000000001FF /* CaptureMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000C /* CaptureMonitor.swift */; };
+		A10000000000000000000334 /* SelfWriteSuppression.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000034 /* SelfWriteSuppression.swift */; };
 		A10000000000000000000200 /* HistoryPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000D /* HistoryPanelView.swift */; };
 		A10000000000000000000332 /* HistoryPanelLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000032 /* HistoryPanelLayout.swift */; };
 		A10000000000000000000333 /* ItemDeleteRouting.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000033 /* ItemDeleteRouting.swift */; };
@@ -59,6 +60,7 @@
 		A10000000000000000000030 /* HistoryCounts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryCounts.swift; sourceTree = "<group>"; };
 		A1000000000000000000000B /* CaptureBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureBuilder.swift; sourceTree = "<group>"; };
 		A1000000000000000000000C /* CaptureMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureMonitor.swift; sourceTree = "<group>"; };
+		A10000000000000000000034 /* SelfWriteSuppression.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelfWriteSuppression.swift; sourceTree = "<group>"; };
 		A1000000000000000000000D /* HistoryPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryPanelView.swift; sourceTree = "<group>"; };
 		A10000000000000000000032 /* HistoryPanelLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryPanelLayout.swift; sourceTree = "<group>"; };
 		A10000000000000000000033 /* ItemDeleteRouting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemDeleteRouting.swift; sourceTree = "<group>"; };
@@ -183,6 +185,7 @@
 			children = (
 				A1000000000000000000000B /* CaptureBuilder.swift */,
 				A1000000000000000000000C /* CaptureMonitor.swift */,
+				A10000000000000000000034 /* SelfWriteSuppression.swift */,
 			);
 			path = Capture;
 			sourceTree = "<group>";
@@ -297,6 +300,7 @@
 				A10000000000000000000330 /* HistoryCounts.swift */,
 				A100000000000000000001FE /* CaptureBuilder.swift */,
 				A100000000000000000001FF /* CaptureMonitor.swift */,
+				A10000000000000000000334 /* SelfWriteSuppression.swift */,
 				A10000000000000000000332 /* HistoryPanelLayout.swift */,
 				A10000000000000000000333 /* ItemDeleteRouting.swift */,
 				A10000000000000000000200 /* HistoryPanelView.swift */,

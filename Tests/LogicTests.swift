@@ -1,3 +1,4 @@
+import AppKit
 import Carbon
 import SQLite3
 import XCTest
@@ -191,6 +192,19 @@ final class LogicTests: XCTestCase {
             digests: ["other-bytes"],
             now: start.addingTimeInterval(0.4)
         ))
+        XCTAssertTrue(suppression.shouldIgnore(
+            changeCount: 5,
+            hash: "rtf-bytes",
+            digests: [],
+            now: start.addingTimeInterval(0.5)
+        ))
+    }
+
+    func testSelfWriteIgnoresUnknownToken() {
+        var suppression = SelfWriteSuppression()
+        let now = Date(timeIntervalSince1970: 5_000)
+        suppression.finish(token: 99, changeCount: 1, now: now)
+        XCTAssertFalse(suppression.shouldIgnore(changeCount: 1, hash: "hash-a", now: now))
     }
 
     func testSelfWritePrunesExpiredAndUnfinishedMarks() {
@@ -238,6 +252,130 @@ final class LogicTests: XCTestCase {
         ])])
         XCTAssertNotEqual(CaptureBuilder.build(original)?.contentHash, CaptureBuilder.build(merged)?.contentHash)
         XCTAssertFalse(CaptureBuilder.echoDigests(original).isDisjoint(with: CaptureBuilder.echoDigests(merged)))
+    }
+
+    func testEchoDigestsIncludeTextFilesAndFullDigestsButSkipMarkers() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("note.txt")
+        try Data("x".utf8).write(to: file)
+        let plist = try PropertyListSerialization.data(fromPropertyList: [file.path], format: .binary, options: 0)
+        let plain = Data("hello".utf8)
+        let marker = Data("secret".utf8)
+        let snapshot = PasteboardSnapshot(items: [PasteboardItemData(
+            values: [
+                PasteboardUTI.plain: plain,
+                PasteboardUTI.filenames: plist,
+                PasteboardUTI.concealed: marker,
+                PasteboardUTI.fileURL: Data(file.path.utf8)
+            ],
+            fullDigests: [PasteboardUTI.png: "full-digest"]
+        )])
+        let digests = CaptureBuilder.echoDigests(snapshot)
+        let attrs = try FileManager.default.attributesOfItem(atPath: file.path)
+        let size = (attrs[.size] as? NSNumber)?.int64Value ?? 0
+        let modified = Int64((attrs[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0)
+        XCTAssertTrue(digests.contains(ContentHash.text("hello")))
+        XCTAssertTrue(digests.contains(ContentHash.sha256(plain)))
+        XCTAssertTrue(digests.contains("full-digest"))
+        XCTAssertTrue(digests.contains(ContentHash.files([FileFingerprint(path: file.path, size: size, modifiedAt: modified)])))
+        XCTAssertFalse(digests.contains(ContentHash.sha256(marker)))
+        XCTAssertFalse(digests.contains(ContentHash.sha256(plist)))
+    }
+
+    func testWrittenEchoDigestsCoverPlainInlineMissingAndSkippedTypes() throws {
+        let item = sample(id: "stored-hash", plainText: "hello\r\n")
+        XCTAssertEqual(
+            PasteboardWriter.writtenEchoDigests(item: item, representations: [], directory: URL(fileURLWithPath: "/tmp"), mode: .plainText),
+            [PasteboardWriter.plainHash(for: item)]
+        )
+        XCTAssertEqual(
+            PasteboardWriter.writtenEchoDigests(item: item, representations: [], directory: URL(fileURLWithPath: "/tmp"), mode: .plainCopy),
+            [ContentHash.text("hello\n")]
+        )
+
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let utf16 = try XCTUnwrap("你好".data(using: .utf16))
+        try utf16.write(to: directory.appendingPathComponent("utf16"))
+        let badUTF8 = Data([0xff])
+        let badUTF16 = Data([0xff])
+        try badUTF8.write(to: directory.appendingPathComponent("bad-utf8"))
+        try badUTF16.write(to: directory.appendingPathComponent("bad-utf16"))
+        let fakeImage = Data("not-an-image".utf8)
+        try fakeImage.write(to: directory.appendingPathComponent("pic"))
+        let representations = [
+            StoredRepresentation(uti: PasteboardUTI.plain, storage: "inline", relativePath: nil, inlineValue: "hello"),
+            StoredRepresentation(uti: PasteboardUTI.url, storage: "inline", relativePath: nil, inlineValue: "https://example.com"),
+            StoredRepresentation(uti: PasteboardUTI.utf16, storage: "file", relativePath: "utf16", inlineValue: nil),
+            StoredRepresentation(uti: PasteboardUTI.plain, storage: "file", relativePath: "bad-utf8", inlineValue: nil),
+            StoredRepresentation(uti: PasteboardUTI.utf16, storage: "file", relativePath: "bad-utf16", inlineValue: nil),
+            StoredRepresentation(uti: PasteboardUTI.tiff, storage: "file", relativePath: "pic", inlineValue: nil),
+            StoredRepresentation(uti: PasteboardUTI.plain, storage: "file", relativePath: "missing", inlineValue: nil),
+            StoredRepresentation(uti: PasteboardUTI.rtf, storage: "inline", relativePath: nil, inlineValue: nil),
+            StoredRepresentation(uti: PasteboardUTI.fileURL, storage: "inline", relativePath: nil, inlineValue: "/tmp/a"),
+            StoredRepresentation(uti: PasteboardUTI.filenames, storage: "inline", relativePath: nil, inlineValue: "/tmp/a"),
+            StoredRepresentation(uti: PasteboardUTI.concealed, storage: "inline", relativePath: nil, inlineValue: "secret")
+        ]
+        let digests = PasteboardWriter.writtenEchoDigests(item: item, representations: representations, directory: directory, mode: .automatic)
+        XCTAssertTrue(digests.contains(item.contentHash))
+        XCTAssertTrue(digests.contains(ContentHash.text("hello")))
+        XCTAssertTrue(digests.contains(ContentHash.sha256(Data("hello".utf8))))
+        XCTAssertTrue(digests.contains(ContentHash.text("https://example.com")))
+        XCTAssertTrue(digests.contains(ContentHash.text("你好")))
+        XCTAssertTrue(digests.contains(ContentHash.sha256(utf16)))
+        XCTAssertTrue(digests.contains(ContentHash.sha256(badUTF8)))
+        XCTAssertTrue(digests.contains(ContentHash.sha256(badUTF16)))
+        XCTAssertNil(String(data: badUTF8, encoding: .utf8))
+        XCTAssertNil(String(data: badUTF16, encoding: .utf16))
+        XCTAssertTrue(digests.contains(ContentHash.imageData(fakeImage)))
+        XCTAssertNil(ContentHash.canonicalImage(fakeImage))
+        XCTAssertFalse(digests.contains(ContentHash.sha256(Data("/tmp/a".utf8))))
+        XCTAssertFalse(digests.contains(ContentHash.sha256(Data("secret".utf8))))
+    }
+
+    func testCanonicalImageMatchesPNGAndTIFFAndJoinsEchoDigests() throws {
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: 2,
+            pixelsHigh: 2,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: 8,
+            bitsPerPixel: 32
+        ), let pixels = rep.bitmapData else {
+            XCTFail("Could not allocate a bitmap")
+            return
+        }
+        for index in 0..<(2 * 8) {
+            pixels[index] = UInt8((index * 37) % 251)
+        }
+        let tiff = try XCTUnwrap(rep.tiffRepresentation)
+        let png = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+        let tiffDigest = try XCTUnwrap(ContentHash.canonicalImage(tiff))
+        let pngDigest = try XCTUnwrap(ContentHash.canonicalImage(png))
+        XCTAssertEqual(tiffDigest, pngDigest)
+        XCTAssertEqual(ContentHash.canonicalImage(tiff), tiffDigest)
+        XCTAssertNil(ContentHash.canonicalImage(Data()))
+
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try png.write(to: directory.appendingPathComponent("shot.png"))
+        let item = sample(id: ContentHash.imageData(png), kind: .image, plainText: "")
+        let stored = StoredRepresentation(uti: PasteboardUTI.png, storage: "file", relativePath: "shot.png", inlineValue: nil)
+        let written = PasteboardWriter.writtenEchoDigests(item: item, representations: [stored], directory: directory, mode: .copyOnly)
+        XCTAssertTrue(written.contains(pngDigest))
+        let readBack = CaptureBuilder.echoDigests(PasteboardSnapshot(items: [
+            PasteboardItemData(values: [PasteboardUTI.tiff: tiff, PasteboardUTI.png: png])
+        ]))
+        XCTAssertTrue(readBack.contains(tiffDigest))
+        XCTAssertFalse(written.isDisjoint(with: readBack))
     }
 
     func testHistoryCountsSeparatesPinnedAndKinds() {

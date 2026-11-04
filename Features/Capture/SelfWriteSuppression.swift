@@ -107,8 +107,8 @@ struct SelfWriteSuppression {
     mutating func shouldIgnore(changeCount: Int, hash: String, digests: Set<String> = [], now: Date) -> Bool {
         prune(now: now)
         return marks.contains { mark in
-            guard let recorded = mark.changeCount, let expiresAt = mark.expiresAt else { return false }
-            guard now < expiresAt, changeCount >= recorded else { return false }
+            guard let recorded = mark.changeCount, mark.expiresAt != nil else { return false }
+            guard changeCount >= recorded else { return false }
             if hash == mark.hash || digests.contains(mark.hash) || mark.digests.contains(hash) {
                 return true
             }

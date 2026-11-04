@@ -145,6 +145,22 @@ enum PasteboardWriter {
     }
 
     /**
+     * 计算这次写回对应的去重哈希。
+     *
+     * 纯文本模式只写入纯文本，哈希按纯文本计算。原样写回沿用条目已有的内容哈希。
+     *
+     * @param item 要写回的历史条目
+     * @param mode 写入模式
+     * @return 采集回声需要比对的哈希
+     */
+    static func writtenHash(for item: ClipboardItem, mode: PasteMode) -> String {
+        if mode.writesPlainText {
+            return plainHash(for: item)
+        }
+        return item.contentHash
+    }
+
+    /**
      * 从负载中解析文件 URL。
      *
      * @param representations 已保存的负载
@@ -179,7 +195,8 @@ final class PasteService {
      * @param mode 用户选择的粘贴模式
      * @param targetBundleID 打开面板时记下的前台应用
      * @param behavior 通用设置里的粘贴行为。为只复制时，automatic 改为 copyOnly
-     * @param noteChangeCount 把本次写入的 changeCount 交给采集器忽略
+     * @param beginSelfWrite 写之前记下即将写入的哈希，返回递增记号
+     * @param finishSelfWrite 写入完成后把记号和 changeCount 交给采集器，打开 1 秒窗口
      * @param prepareForKeystroke 发送按键前的准备，调用方在这里关闭面板
      * @param completion 写完或发送按键后的结果，可能晚于本方法返回
      */
@@ -190,7 +207,8 @@ final class PasteService {
         mode: PasteMode,
         targetBundleID: String?,
         behavior: PasteBehavior,
-        noteChangeCount: (Int) -> Void,
+        beginSelfWrite: (String) -> UInt64,
+        finishSelfWrite: (UInt64, Int) -> Void,
         prepareForKeystroke: () -> Void = {},
         completion: @escaping (PasteOutcome) -> Void
     ) {
@@ -200,8 +218,9 @@ final class PasteService {
             return
         }
         let effective: PasteMode = behavior == .copyOnly && mode == .automatic ? .copyOnly : mode
+        let token = beginSelfWrite(PasteboardWriter.writtenHash(for: item, mode: effective))
         let count = PasteboardWriter.write(item: item, representations: representations, directory: directory, mode: effective)
-        noteChangeCount(count)
+        finishSelfWrite(token, count)
         let modeName = effective.logName
         let kind = item.kind.rawValue
         guard effective.sendsKeystroke else {

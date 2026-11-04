@@ -138,6 +138,42 @@ final class LogicTests: XCTestCase {
         XCTAssertEqual(PasteboardWriter.plainHash(for: item), ContentHash.text("hello"))
     }
 
+    func testWrittenHashUsesPlainTextOnlyForPlainModes() {
+        let item = sample(id: "stored-hash", plainText: "hello")
+        XCTAssertEqual(PasteboardWriter.writtenHash(for: item, mode: .plainText), ContentHash.text("hello"))
+        XCTAssertEqual(PasteboardWriter.writtenHash(for: item, mode: .plainCopy), ContentHash.text("hello"))
+        XCTAssertEqual(PasteboardWriter.writtenHash(for: item, mode: .automatic), item.contentHash)
+        XCTAssertEqual(PasteboardWriter.writtenHash(for: item, mode: .copyOnly), item.contentHash)
+    }
+
+    func testSelfWriteIgnoresSameHashWithinOneSecond() {
+        var suppression = SelfWriteSuppression()
+        let start = Date(timeIntervalSince1970: 1_000)
+        let token = suppression.begin(hash: "hash-a")
+        XCTAssertFalse(suppression.shouldIgnore(changeCount: 7, hash: "hash-a", now: start))
+        suppression.finish(token: token, changeCount: 7, now: start)
+        XCTAssertTrue(suppression.shouldIgnore(changeCount: 7, hash: "hash-a", now: start.addingTimeInterval(0.1)))
+        XCTAssertTrue(suppression.shouldIgnore(changeCount: 8, hash: "hash-a", now: start.addingTimeInterval(0.4)))
+        XCTAssertFalse(suppression.shouldIgnore(changeCount: 8, hash: "other", now: start.addingTimeInterval(0.2)))
+        XCTAssertFalse(suppression.shouldIgnore(changeCount: 6, hash: "hash-a", now: start.addingTimeInterval(0.2)))
+        XCTAssertFalse(suppression.shouldIgnore(changeCount: 8, hash: "hash-a", now: start.addingTimeInterval(1)))
+    }
+
+    func testSelfWriteWindowsDoNotCancelEachOther() {
+        var suppression = SelfWriteSuppression()
+        let start = Date(timeIntervalSince1970: 2_000)
+        let first = suppression.begin(hash: "hash-a")
+        suppression.finish(token: first, changeCount: 10, now: start)
+        let second = suppression.begin(hash: "hash-b")
+        suppression.finish(token: second, changeCount: 11, now: start.addingTimeInterval(0.2))
+        let midway = start.addingTimeInterval(0.5)
+        XCTAssertTrue(suppression.shouldIgnore(changeCount: 12, hash: "hash-a", now: midway))
+        XCTAssertTrue(suppression.shouldIgnore(changeCount: 13, hash: "hash-b", now: midway))
+        XCTAssertFalse(suppression.shouldIgnore(changeCount: 14, hash: "hash-a", now: start.addingTimeInterval(1)))
+        XCTAssertTrue(suppression.shouldIgnore(changeCount: 15, hash: "hash-b", now: start.addingTimeInterval(1)))
+        XCTAssertFalse(suppression.shouldIgnore(changeCount: 16, hash: "hash-b", now: start.addingTimeInterval(1.2)))
+    }
+
     func testHistoryCountsSeparatesPinnedAndKinds() {
         let items = [
             sample(id: "1", pinned: true, kind: .text),

@@ -174,6 +174,72 @@ final class LogicTests: XCTestCase {
         XCTAssertFalse(suppression.shouldIgnore(changeCount: 16, hash: "hash-b", now: start.addingTimeInterval(1.2)))
     }
 
+    func testSelfWriteIgnoresSupersetEchoWhenDedupHashChanges() {
+        var suppression = SelfWriteSuppression()
+        let start = Date(timeIntervalSince1970: 3_000)
+        let token = suppression.begin(hash: "rtf-hash", digests: ["rtf-hash", "rtf-bytes"], now: start)
+        suppression.finish(token: token, changeCount: 4, now: start)
+        XCTAssertTrue(suppression.shouldIgnore(
+            changeCount: 5,
+            hash: "plain-hash",
+            digests: ["rtf-bytes", "plain-hash"],
+            now: start.addingTimeInterval(0.3)
+        ))
+        XCTAssertFalse(suppression.shouldIgnore(
+            changeCount: 6,
+            hash: "other",
+            digests: ["other-bytes"],
+            now: start.addingTimeInterval(0.4)
+        ))
+    }
+
+    func testSelfWritePrunesExpiredAndUnfinishedMarks() {
+        var suppression = SelfWriteSuppression()
+        let start = Date(timeIntervalSince1970: 4_000)
+        let unfinished = suppression.begin(hash: "pending", now: start)
+        suppression.prune(now: start.addingTimeInterval(1))
+        suppression.finish(token: unfinished, changeCount: 1, now: start.addingTimeInterval(1))
+        XCTAssertFalse(suppression.shouldIgnore(changeCount: 1, hash: "pending", now: start.addingTimeInterval(1)))
+
+        let token = suppression.begin(hash: "kept", now: start)
+        suppression.finish(token: token, changeCount: 2, now: start)
+        suppression.prune(now: start.addingTimeInterval(1))
+        XCTAssertFalse(suppression.shouldIgnore(changeCount: 3, hash: "kept", now: start.addingTimeInterval(1)))
+    }
+
+    func testEchoDigestsStillMatchWhenPlainTextIsAdded() throws {
+        let rich = Data("rich-a".utf8)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try rich.write(to: directory.appendingPathComponent("payload"))
+        let item = sample(id: ContentHash.sha256(rich), plainText: "")
+        let stored = StoredRepresentation(uti: PasteboardUTI.rtf, storage: "file", relativePath: "payload", inlineValue: nil)
+        let written = PasteboardWriter.writtenEchoDigests(item: item, representations: [stored], directory: directory, mode: .automatic)
+        let original = PasteboardSnapshot(items: [PasteboardItemData(values: [PasteboardUTI.rtf: rich])])
+        let merged = PasteboardSnapshot(items: [PasteboardItemData(values: [
+            PasteboardUTI.rtf: rich,
+            PasteboardUTI.plain: Data("hello".utf8)
+        ])])
+        XCTAssertEqual(CaptureBuilder.build(original)?.contentHash, item.contentHash)
+        XCTAssertNotEqual(CaptureBuilder.build(merged)?.contentHash, item.contentHash)
+        var readBack = CaptureBuilder.echoDigests(merged)
+        readBack.insert(CaptureBuilder.build(merged)?.contentHash ?? "")
+        XCTAssertFalse(written.isDisjoint(with: readBack))
+    }
+
+    func testEchoDigestsStillContainOriginalImageWhenAnotherEncodingIsAdded() {
+        let tiff = Data("tiff-bytes".utf8)
+        let png = Data("png-bytes".utf8)
+        let original = PasteboardSnapshot(items: [PasteboardItemData(values: [PasteboardUTI.tiff: tiff])])
+        let merged = PasteboardSnapshot(items: [PasteboardItemData(values: [
+            PasteboardUTI.png: png,
+            PasteboardUTI.tiff: tiff
+        ])])
+        XCTAssertNotEqual(CaptureBuilder.build(original)?.contentHash, CaptureBuilder.build(merged)?.contentHash)
+        XCTAssertFalse(CaptureBuilder.echoDigests(original).isDisjoint(with: CaptureBuilder.echoDigests(merged)))
+    }
+
     func testHistoryCountsSeparatesPinnedAndKinds() {
         let items = [
             sample(id: "1", pinned: true, kind: .text),

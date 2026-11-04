@@ -69,11 +69,12 @@ final class CaptureMonitor {
      *
      * 只调用这里不会抑制采集，写入完成后再调用 finishSelfWrite。
      *
-     * @param hash 即将写入的内容哈希
+     * @param hash 即将写入的去重哈希
+     * @param digests 即将写入的负载摘要
      * @return 本次写入的递增记号
      */
-    func beginSelfWrite(hash: String) -> UInt64 {
-        selfWrites.begin(hash: hash)
+    func beginSelfWrite(hash: String, digests: Set<String> = []) -> UInt64 {
+        selfWrites.begin(hash: hash, digests: digests)
     }
 
     /**
@@ -91,10 +92,11 @@ final class CaptureMonitor {
      * 检查一次剪切板是否变化，并在允许时采集。
      *
      * 暂停、本应用、安全输入及其结束后 1 秒、隐私门禁拒绝的内容都跳过。
-     * 本应用刚写回的同哈希变化在建条目后丢弃。
+     * 本应用刚写回的变化在建条目后丢弃，系统补上的类型也算同一次写入。
      */
     private func poll() {
         guard let settings else { return }
+        selfWrites.prune(now: Date())
         settings.refreshPause()
         if SecureInput.isEnabled() {
             lastSecureInputAt = Date()
@@ -143,10 +145,12 @@ final class CaptureMonitor {
             let kind = captured.kind.rawValue
             let oversize = captured.oversize
             let bytes = captured.byteSize
+            var digests = CaptureBuilder.echoDigests(snapshot)
+            digests.insert(captured.contentHash)
             let sourceName = snapshot.hasRemoteMarker ? L10n.text("通用剪贴板", "Universal Clipboard") : front.name
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                if self.selfWrites.shouldIgnore(changeCount: count, hash: captured.contentHash, now: Date()) {
+                if self.selfWrites.shouldIgnore(changeCount: count, hash: captured.contentHash, digests: digests, now: Date()) {
                     AppLog.capture.info("skip self-write")
                     return
                 }

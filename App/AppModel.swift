@@ -167,8 +167,8 @@ final class AppModel: ObservableObject {
             mode: mode,
             targetBundleID: targetBundleID,
             behavior: settings.pasteBehavior,
-            beginSelfWrite: { [weak self] hash in
-                self?.monitor.beginSelfWrite(hash: hash) ?? 0
+            beginSelfWrite: { [weak self] hash, digests in
+                self?.monitor.beginSelfWrite(hash: hash, digests: digests) ?? 0
             },
             finishSelfWrite: { [weak self] token, count in
                 self?.monitor.finishSelfWrite(token: token, changeCount: count)

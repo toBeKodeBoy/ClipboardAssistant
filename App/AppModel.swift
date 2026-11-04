@@ -85,6 +85,7 @@ final class AppModel: ObservableObject {
      * 从数据库重新加载历史。
      *
      * 查询失败时记录错误，并把界面列表清空。当前选中项不在结果里时改选筛选后的第一条。
+     * 查询成功且历史为空时，清掉清空失败提示。查询失败时保留这条提示。
      */
     func reload() {
         do {
@@ -92,11 +93,11 @@ final class AppModel: ObservableObject {
             if selectedID == nil || !items.contains(where: { $0.id == selectedID }) {
                 selectedID = visibleItems().first?.id
             }
+            dismissClearAllFailureIfHistoryEmpty()
         } catch {
             AppLog.store.error("reload failed \(String(describing: error))")
             items = []
         }
-        dismissClearAllFailureIfHistoryEmpty()
     }
 
     /**
@@ -295,6 +296,32 @@ final class AppModel: ObservableObject {
         undoRepresentations = []
         reload()
         AppLog.store.info("cleared history")
+    }
+
+    /**
+     * 从设置页清空全部历史。
+     *
+     * 失败时显示「清空失败」，不刷新列表。成功后的空列表会清掉这条提示。
+     */
+    func clearAllFromSettings() {
+        do {
+            try clearAll()
+        } catch {
+            clearAllError = Self.clearAllFailedMessage
+        }
+    }
+
+    /**
+     * 从主面板清空全部历史。
+     *
+     * 失败时在面板底部显示「清空失败」，不刷新列表。成功后的空列表会清掉同一句提示。
+     */
+    func clearAllFromPanel() {
+        do {
+            try clearAll()
+        } catch {
+            banner = Self.clearAllFailedMessage
+        }
     }
 
     /**

@@ -236,7 +236,7 @@ struct HistoryPanelView: View {
                 do {
                     try model.clearAll()
                 } catch {
-                    model.banner = L10n.text("清空失败", "Couldn't clear history")
+                    model.banner = AppModel.clearAllFailedMessage
                 }
             }
             Button(L10n.text("取消", "Cancel"), role: .cancel) {}

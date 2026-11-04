@@ -16,6 +16,13 @@ final class AppModel: ObservableObject {
     @Published var filter: ItemFilter = .all
     @Published var selectedID: String?
     @Published var banner: String?
+
+    /**
+     * 设置页清空失败时的提示。
+     *
+     * 历史变为空后清掉，避免另一边已经清空而这里仍显示失败。
+     */
+    @Published var clearAllError: String?
     @Published var confirmClearAll = false
     @Published var confirmPinnedDelete = false
     @Published var accessibilityTrusted = false
@@ -35,6 +42,11 @@ final class AppModel: ObservableObject {
      * 确认按钮用它删除，不跟随确认框打开后的选中变化。
      */
     var pendingPinnedDeleteID: String? { deleteSession.pendingID }
+
+    /**
+     * 清空历史失败时，设置页和主面板共用的提示。
+     */
+    static let clearAllFailedMessage = L10n.text("清空失败", "Couldn't clear history")
 
     /**
      * 用已打开的存储和偏好创建模型。
@@ -83,6 +95,20 @@ final class AppModel: ObservableObject {
         } catch {
             AppLog.store.error("reload failed \(String(describing: error))")
             items = []
+        }
+        dismissClearAllFailureIfHistoryEmpty()
+    }
+
+    /**
+     * 历史已经为空时，清掉清空失败提示。
+     *
+     * 设置页和主面板都可以把历史清掉。失败提示留在另一边时，空列表不能再显示「清空失败」。
+     */
+    private func dismissClearAllFailureIfHistoryEmpty() {
+        guard items.isEmpty else { return }
+        clearAllError = nil
+        if banner == Self.clearAllFailedMessage {
+            banner = nil
         }
     }
 

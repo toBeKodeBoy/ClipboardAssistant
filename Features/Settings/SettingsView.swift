@@ -7,7 +7,6 @@ struct SettingsView: View {
     @State private var tab = SettingsTab.general
     @State private var recording = false
     @State private var confirmClear = false
-    @State private var clearError: String?
     @State private var recordMessage: String?
 
     var body: some View {
@@ -128,17 +127,16 @@ struct SettingsView: View {
                 Button(L10n.text("清空", "Clear"), role: .destructive) {
                     do {
                         try model.clearAll()
-                        clearError = nil
                     } catch {
-                        clearError = L10n.text("清空失败", "Couldn't clear history")
+                        model.clearAllError = AppModel.clearAllFailedMessage
                     }
                 }
                 Button(L10n.text("取消", "Cancel"), role: .cancel) {}
             } message: {
                 Text(L10n.text("将删除 \(model.items.count) 条记录，包含已置顶的条目。", "This deletes \(model.items.count) items, including pinned ones."))
             }
-            if let clearError {
-                Text(clearError)
+            if let clearAllError = model.clearAllError {
+                Text(clearAllError)
                     .font(.caption)
                     .foregroundStyle(.red)
             }

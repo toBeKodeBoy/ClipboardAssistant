@@ -311,6 +311,29 @@ final class LogicTests: XCTestCase {
         XCTAssertEqual(try model.store.fetchAll().map(\.id), [pinned.id])
     }
 
+    @MainActor
+    func testClearAllFailureNoticeStaysUntilHistoryIsEmpty() throws {
+        let harness = try deleteHarness()
+        defer { harness.cleanup() }
+        let model = harness.model
+        _ = try harness.insert("still-here")
+        model.reload()
+        model.clearAllError = AppModel.clearAllFailedMessage
+        model.banner = AppModel.clearAllFailedMessage
+
+        model.reload()
+
+        XCTAssertEqual(model.items.count, 1)
+        XCTAssertEqual(model.clearAllError, AppModel.clearAllFailedMessage)
+        XCTAssertEqual(model.banner, AppModel.clearAllFailedMessage)
+
+        try model.clearAll()
+
+        XCTAssertEqual(try model.store.count(), 0)
+        XCTAssertNil(model.clearAllError)
+        XCTAssertNil(model.banner)
+    }
+
     func testLogsDirectoryLivesInTheProject() throws {
         let directory = try AppPaths.logsDirectory()
         XCTAssertEqual(directory.lastPathComponent, "logs")

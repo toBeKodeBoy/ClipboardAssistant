@@ -233,11 +233,7 @@ struct HistoryPanelView: View {
         .padding(.vertical, 8)
         .alert(L10n.text("清空全部历史？", "Clear all history?"), isPresented: $model.confirmClearAll) {
             Button(L10n.text("清空", "Clear"), role: .destructive) {
-                do {
-                    try model.clearAll()
-                } catch {
-                    model.banner = L10n.text("清空失败", "Couldn't clear history")
-                }
+                model.clearAllFromPanel()
             }
             Button(L10n.text("取消", "Cancel"), role: .cancel) {}
         } message: {

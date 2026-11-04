@@ -125,11 +125,16 @@ struct SettingsView: View {
             }
             .alert(L10n.text("清空全部历史？", "Clear all history?"), isPresented: $confirmClear) {
                 Button(L10n.text("清空", "Clear"), role: .destructive) {
-                    try? model.clearAll()
+                    model.clearAllFromSettings()
                 }
                 Button(L10n.text("取消", "Cancel"), role: .cancel) {}
             } message: {
                 Text(L10n.text("将删除 \(model.items.count) 条记录，包含已置顶的条目。", "This deletes \(model.items.count) items, including pinned ones."))
+            }
+            if let clearAllError = model.clearAllError {
+                Text(clearAllError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
             }
         }
         .onChange(of: model.settings.maxCount) { _, _ in try? model.store.applyRetention(model.settings.retention); model.reload() }

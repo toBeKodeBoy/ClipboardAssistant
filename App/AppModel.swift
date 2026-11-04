@@ -16,6 +16,13 @@ final class AppModel: ObservableObject {
     @Published var filter: ItemFilter = .all
     @Published var selectedID: String?
     @Published var banner: String?
+
+    /**
+     * 设置页清空失败时的提示。
+     *
+     * 历史变为空后清掉，避免另一边已经清空而这里仍显示失败。
+     */
+    @Published var clearAllError: String?
     @Published var confirmClearAll = false
     @Published var confirmPinnedDelete = false
     @Published var accessibilityTrusted = false
@@ -35,6 +42,11 @@ final class AppModel: ObservableObject {
      * 确认按钮用它删除，不跟随确认框打开后的选中变化。
      */
     var pendingPinnedDeleteID: String? { deleteSession.pendingID }
+
+    /**
+     * 清空历史失败时，设置页和主面板共用的提示。
+     */
+    static let clearAllFailedMessage = L10n.text("清空失败", "Couldn't clear history")
 
     /**
      * 用已打开的存储和偏好创建模型。
@@ -73,6 +85,7 @@ final class AppModel: ObservableObject {
      * 从数据库重新加载历史。
      *
      * 查询失败时记录错误，并把界面列表清空。当前选中项不在结果里时改选筛选后的第一条。
+     * 查询成功且历史为空时，清掉清空失败提示。查询失败时保留这条提示。
      */
     func reload() {
         do {
@@ -80,9 +93,23 @@ final class AppModel: ObservableObject {
             if selectedID == nil || !items.contains(where: { $0.id == selectedID }) {
                 selectedID = visibleItems().first?.id
             }
+            dismissClearAllFailureIfHistoryEmpty()
         } catch {
             AppLog.store.error("reload failed \(String(describing: error))")
             items = []
+        }
+    }
+
+    /**
+     * 历史已经为空时，清掉清空失败提示。
+     *
+     * 设置页和主面板都可以把历史清掉。失败提示留在另一边时，空列表不能再显示「清空失败」。
+     */
+    private func dismissClearAllFailureIfHistoryEmpty() {
+        guard items.isEmpty else { return }
+        clearAllError = nil
+        if banner == Self.clearAllFailedMessage {
+            banner = nil
         }
     }
 
@@ -269,6 +296,32 @@ final class AppModel: ObservableObject {
         undoRepresentations = []
         reload()
         AppLog.store.info("cleared history")
+    }
+
+    /**
+     * 从设置页清空全部历史。
+     *
+     * 失败时显示「清空失败」，不刷新列表。成功后的空列表会清掉这条提示。
+     */
+    func clearAllFromSettings() {
+        do {
+            try clearAll()
+        } catch {
+            clearAllError = Self.clearAllFailedMessage
+        }
+    }
+
+    /**
+     * 从主面板清空全部历史。
+     *
+     * 失败时在面板底部显示「清空失败」，不刷新列表。成功后的空列表会清掉同一句提示。
+     */
+    func clearAllFromPanel() {
+        do {
+            try clearAll()
+        } catch {
+            banner = Self.clearAllFailedMessage
+        }
     }
 
     /**

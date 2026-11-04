@@ -1,4 +1,5 @@
 import Carbon
+import SQLite3
 import XCTest
 @testable import ClipboardAssistant
 
@@ -311,6 +312,111 @@ final class LogicTests: XCTestCase {
         XCTAssertEqual(try model.store.fetchAll().map(\.id), [pinned.id])
     }
 
+    @MainActor
+    func testClearAllFailureNoticeStaysWhileItemsRemain() throws {
+        let harness = try deleteHarness()
+        defer { harness.cleanup() }
+        let model = harness.model
+        _ = try harness.insert("still-here")
+        model.reload()
+        model.clearAllError = AppModel.clearAllFailedMessage
+        model.banner = AppModel.clearAllFailedMessage
+
+        model.reload()
+
+        XCTAssertEqual(model.items.count, 1)
+        XCTAssertEqual(model.clearAllError, AppModel.clearAllFailedMessage)
+        XCTAssertEqual(model.banner, AppModel.clearAllFailedMessage)
+    }
+
+    @MainActor
+    func testSettingsClearFailureKeepsHistoryAndSetsNotice() throws {
+        let harness = try deleteHarness()
+        defer { harness.cleanup() }
+        let model = harness.model
+        _ = try harness.insert("kept")
+        model.reload()
+        model.banner = "其他提示"
+        try installClearBlocker(at: harness.directory)
+
+        model.clearAllFromSettings()
+
+        XCTAssertEqual(try model.store.count(), 1)
+        XCTAssertEqual(model.items.count, 1)
+        XCTAssertEqual(model.clearAllError, AppModel.clearAllFailedMessage)
+        XCTAssertEqual(model.banner, "其他提示")
+    }
+
+    @MainActor
+    func testSettingsClearSuccessRemovesFailureNotices() throws {
+        let harness = try deleteHarness()
+        defer { harness.cleanup() }
+        let model = harness.model
+        _ = try harness.insert("gone")
+        model.reload()
+        model.clearAllError = AppModel.clearAllFailedMessage
+        model.banner = AppModel.clearAllFailedMessage
+
+        model.clearAllFromSettings()
+
+        XCTAssertEqual(try model.store.count(), 0)
+        XCTAssertNil(model.clearAllError)
+        XCTAssertNil(model.banner)
+    }
+
+    @MainActor
+    func testPanelClearFailureSetsBannerAndKeepsSettingsNotice() throws {
+        let harness = try deleteHarness()
+        defer { harness.cleanup() }
+        let model = harness.model
+        _ = try harness.insert("kept")
+        model.reload()
+        model.clearAllError = AppModel.clearAllFailedMessage
+        try installClearBlocker(at: harness.directory)
+
+        model.clearAllFromPanel()
+
+        XCTAssertEqual(try model.store.count(), 1)
+        XCTAssertEqual(model.items.count, 1)
+        XCTAssertEqual(model.banner, AppModel.clearAllFailedMessage)
+        XCTAssertEqual(model.clearAllError, AppModel.clearAllFailedMessage)
+    }
+
+    @MainActor
+    func testPanelClearSuccessKeepsUnrelatedBanner() throws {
+        let harness = try deleteHarness()
+        defer { harness.cleanup() }
+        let model = harness.model
+        _ = try harness.insert("gone")
+        model.reload()
+        model.clearAllError = AppModel.clearAllFailedMessage
+        model.banner = "其他提示"
+
+        model.clearAllFromPanel()
+
+        XCTAssertEqual(try model.store.count(), 0)
+        XCTAssertNil(model.clearAllError)
+        XCTAssertEqual(model.banner, "其他提示")
+    }
+
+    @MainActor
+    func testReloadFailureKeepsClearAllFailureNotice() throws {
+        let harness = try deleteHarness()
+        defer { harness.cleanup() }
+        let model = harness.model
+        _ = try harness.insert("kept")
+        model.reload()
+        model.clearAllError = AppModel.clearAllFailedMessage
+        model.banner = AppModel.clearAllFailedMessage
+        try dropItemsTable(at: harness.directory)
+
+        model.reload()
+
+        XCTAssertTrue(model.items.isEmpty)
+        XCTAssertEqual(model.clearAllError, AppModel.clearAllFailedMessage)
+        XCTAssertEqual(model.banner, AppModel.clearAllFailedMessage)
+    }
+
     func testLogsDirectoryLivesInTheProject() throws {
         let directory = try AppPaths.logsDirectory()
         XCTAssertEqual(directory.lastPathComponent, "logs")
@@ -364,6 +470,35 @@ final class LogicTests: XCTestCase {
         let store = try HistoryStore(directory: directory)
         let model = AppModel(store: store, settings: AppSettings(defaults: defaults))
         return DeleteHarness(model: model, directory: directory, suite: suite)
+    }
+
+    private func installClearBlocker(at directory: URL) throws {
+        try executeSQL("""
+        CREATE TRIGGER block_clear BEFORE DELETE ON items
+        BEGIN
+          SELECT RAISE(ABORT, 'blocked');
+        END;
+        """, at: directory)
+    }
+
+    private func dropItemsTable(at directory: URL) throws {
+        try executeSQL("DROP TABLE items", at: directory)
+    }
+
+    private func executeSQL(_ sql: String, at directory: URL) throws {
+        var handle: OpaquePointer?
+        let path = directory.appendingPathComponent("history.db").path
+        guard sqlite3_open(path, &handle) == SQLITE_OK, let handle else {
+            throw StoreError.open("open")
+        }
+        defer { sqlite3_close(handle) }
+        sqlite3_busy_timeout(handle, 2_000)
+        var message: UnsafeMutablePointer<CChar>?
+        let code = sqlite3_exec(handle, sql, nil, nil, &message)
+        defer { sqlite3_free(message) }
+        guard code == SQLITE_OK else {
+            throw StoreError.sql(message.map { String(cString: $0) } ?? sql)
+        }
     }
 
     private func utcDate(year: Int, month: Int, day: Int, hour: Int) -> Date {

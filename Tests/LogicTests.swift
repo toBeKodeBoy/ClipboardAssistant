@@ -1024,6 +1024,13 @@ final class LogicTests: XCTestCase {
         controller.menuWillOpen(menu)
         XCTAssertEqual(menu.items.first?.isEnabled, false)
         XCTAssertEqual(menu.items.first?.title, L10n.text("暂无记录", "No history"))
+        let quit = try XCTUnwrap(menu.items.last { $0.action == NSSelectorFromString("quit") })
+        XCTAssertEqual(quit.title, L10n.text("退出", "Quit"))
+        XCTAssertEqual(quit.keyEquivalent, "q")
+        var didQuit = false
+        controller.terminate = { didQuit = true }
+        XCTAssertTrue(NSApp.sendAction(quit.action!, to: quit.target, from: quit))
+        XCTAssertTrue(didQuit)
         for index in 0..<11 {
             _ = try harness.insert("row-\(index)")
         }
@@ -1135,6 +1142,43 @@ final class LogicTests: XCTestCase {
         harness.model.settings.appearance = .system
     }
 
+    @MainActor
+    func testCommandQQuitsThroughTheSameActionAsTheMenu() throws {
+        let harness = try deleteHarness()
+        let panel = PanelController(model: harness.model)
+        let controller = StatusItemController(model: harness.model, panel: panel)
+        var quits = 0
+        controller.terminate = { quits += 1 }
+        defer {
+            panel.closePanel()
+            controller.removeFromStatusBar()
+            harness.cleanup()
+        }
+
+        let menu = NSMenu()
+        controller.menuWillOpen(menu)
+        let quit = try XCTUnwrap(menu.items.last { $0.action == NSSelectorFromString("quit") })
+        XCTAssertEqual(quit.title, L10n.text("退出", "Quit"))
+        XCTAssertEqual(quit.keyEquivalent, "q")
+        XCTAssertTrue(NSApp.sendAction(quit.action!, to: quit.target, from: quit))
+        XCTAssertEqual(quits, 1)
+
+        let commandQ = try XCTUnwrap(Self.keyDown(characters: "q", flags: [.command], keyCode: UInt16(kVK_ANSI_Q)))
+        XCTAssertTrue(QuitShortcut.matches(commandQ))
+        XCTAssertNil(controller.consumeCommandQ(commandQ))
+        XCTAssertEqual(quits, 2)
+        let typedQ = try XCTUnwrap(Self.keyDown(characters: "q", flags: [], keyCode: UInt16(kVK_ANSI_Q)))
+        let shifted = try XCTUnwrap(Self.keyDown(characters: "Q", flags: [.command, .shift], keyCode: UInt16(kVK_ANSI_Q)))
+        XCTAssertFalse(QuitShortcut.matches(typedQ))
+        XCTAssertFalse(QuitShortcut.matches(shifted))
+        XCTAssertEqual(controller.consumeCommandQ(typedQ)?.keyCode, typedQ.keyCode)
+        XCTAssertEqual(controller.consumeCommandQ(shifted)?.keyCode, shifted.keyCode)
+        XCTAssertEqual(quits, 2)
+
+        NSApp.sendEvent(commandQ)
+        XCTAssertEqual(quits, 3)
+    }
+
     private func flushMain() {
         let flushed = expectation(description: "flush main")
         DispatchQueue.main.async {
@@ -1164,6 +1208,21 @@ final class LogicTests: XCTestCase {
             DispatchQueue.main.async { closed.fulfill() }
         }
         return closed
+    }
+
+    private static func keyDown(characters: String, flags: NSEvent.ModifierFlags, keyCode: UInt16) -> NSEvent? {
+        NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: flags,
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: characters,
+            charactersIgnoringModifiers: characters,
+            isARepeat: false,
+            keyCode: keyCode
+        )
     }
 
     private static func mouseEvent(type: NSEvent.EventType, location: NSPoint, flags: NSEvent.ModifierFlags) -> NSEvent? {

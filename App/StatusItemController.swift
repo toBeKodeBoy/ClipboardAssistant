@@ -50,6 +50,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /** 模拟状态栏按钮点击以打开系统菜单。测试可换成不跟踪菜单的实现。 */
     var performPrimaryClick: (NSButton) -> Void = { $0.performClick(nil) }
 
+    /** 结束进程。菜单「退出」和 ⌘Q 都走这里。测试可换成记录调用的实现，避免把测试进程退掉。 */
+    var terminate: () -> Void = { NSApp.terminate(nil) }
+
+    /** 本应用内的 ⌘Q 监听。只接收发给本进程的按键，不占用其他应用的 ⌘Q。 */
+    private let quitEvents = QuitKeyMonitor()
+
     /**
      * 创建状态栏图标，并把全局热键接到面板开关。
      *
@@ -65,6 +71,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu = NSMenu()
         super.init()
         menu.delegate = self
+        quitEvents.install { [weak self] event in
+            guard let self else { return event }
+            return self.consumeCommandQ(event)
+        }
         model.settings.onPauseStateChange = { [weak self] in
             guard let self else { return }
             self.item.button?.image = self.icon()
@@ -115,7 +125,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     /**
-     * 重建菜单：最近 10 条、打开主面板、暂停和设置。
+     * 重建菜单：最近 10 条、打开主面板、暂停、设置和退出。
      *
      * 最近条目不显示图标。没有历史时放一条不可点的占位。暂停热键已设置且注册成功时，把它写在暂停菜单项后面。
      *
@@ -152,6 +162,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let settings = NSMenuItem(title: L10n.text("设置…", "Settings…"), action: #selector(openSettings), keyEquivalent: "")
         settings.target = self
         menu.addItem(settings)
+        menu.addItem(.separator())
+        let quit = NSMenuItem(title: L10n.text("退出", "Quit"), action: #selector(quit), keyEquivalent: "q")
+        quit.target = self
+        menu.addItem(quit)
     }
 
     /**
@@ -437,9 +451,24 @@ final class StatusItemController: NSObject, NSMenuDelegate {
      */
     func removeFromStatusBar() {
         stopTrustPolling()
+        quitEvents.remove()
         permissionWindow?.orderOut(nil)
         settingsWindow?.orderOut(nil)
         NSStatusBar.system.removeStatusItem(item)
+    }
+
+    /**
+     * 单独的 ⌘Q 结束进程，其余按键原样返回。
+     *
+     * 主面板、设置、权限说明成为关键窗口，或状态栏菜单打开时，本应用会收到这个按键。菜单「退出」调用同一个 `terminate`。
+     *
+     * @param event 按键事件
+     * @return 已退出时返回空，调用方应吞掉事件
+     */
+    func consumeCommandQ(_ event: NSEvent) -> NSEvent? {
+        guard QuitShortcut.matches(event) else { return event }
+        terminate()
+        return nil
     }
 
     /**
@@ -450,6 +479,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func pasteRecent(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String else { return }
         model.paste(mode: .automatic, itemID: id)
+    }
+
+    /**
+     * 退出应用。
+     *
+     * 菜单栏应用没有 Dock 图标，从这里结束进程。历史仍留在本机。
+     */
+    @objc private func quit() {
+        terminate()
     }
 
     /**
@@ -495,6 +533,57 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         settingsWindow?.center()
         settingsWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+}
+
+/**
+ * 单独的 ⌘Q。
+ *
+ * 与菜单项「退出」的快捷键一致。带 Shift、Option 或 Control 的组合不匹配。
+ */
+enum QuitShortcut {
+    /**
+     * 是否为不带其他修饰键的 ⌘Q。
+     *
+     * @param event 按键事件
+     * @return 是 ⌘Q 时返回 true
+     */
+    static func matches(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let commandOnly = flags.intersection([.command, .shift, .option, .control]) == .command
+        return commandOnly && event.charactersIgnoringModifiers?.lowercased() == "q"
+    }
+}
+
+/**
+ * 监听发给本进程的按键。
+ *
+ * 对象释放时卸掉监听，避免测试结束后仍接到 ⌘Q。
+ */
+private final class QuitKeyMonitor {
+    private var token: Any?
+
+    /**
+     * 登记按键监听。重复调用时保留第一次。
+     *
+     * @param handler 返回空表示吞掉事件
+     */
+    func install(handler: @escaping (NSEvent) -> NSEvent?) {
+        guard token == nil else { return }
+        token = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: handler)
+    }
+
+    /**
+     * 卸掉监听。
+     */
+    func remove() {
+        guard let token else { return }
+        NSEvent.removeMonitor(token)
+        self.token = nil
+    }
+
+    deinit {
+        remove()
     }
 }
 

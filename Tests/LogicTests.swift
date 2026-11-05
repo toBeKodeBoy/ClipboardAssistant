@@ -735,6 +735,11 @@ final class LogicTests: XCTestCase {
         XCTAssertEqual(redraws, 1)
     }
 
+    func testStatusClickOpensPermissionGuideUntilTrusted() {
+        XCTAssertEqual(StatusItemInteraction.destination(accessibilityTrusted: false), .permissionGuide)
+        XCTAssertEqual(StatusItemInteraction.destination(accessibilityTrusted: true), .menu)
+    }
+
     func testStatusMenuPauseTitleIncludesTheShortcutWhenSet() {
         XCTAssertEqual(StatusMenuText.pauseItem(isPaused: false, hotkeyDisplay: ""), L10n.text("暂停记录", "Pause"))
         XCTAssertEqual(StatusMenuText.pauseItem(isPaused: true, hotkeyDisplay: ""), L10n.text("恢复记录", "Resume"))

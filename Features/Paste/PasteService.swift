@@ -67,6 +67,15 @@ struct PasteOutcome: Equatable {
     var sentKeystroke: Bool
     /** 需要展示给用户的失败原因。成功时为空。 */
     var message: String?
+
+    /**
+     * 自动粘贴没有发出 ⌘V 时的提示。
+     *
+     * 未授权和按键发送失败用同一句。剪切板此时已经写好。
+     */
+    static var manualPasteMessage: String {
+        L10n.text("未能自动粘贴，已复制，请手动粘贴", "Couldn't paste automatically. Copied — paste it yourself.")
+    }
 }
 
 /**
@@ -293,7 +302,7 @@ final class PasteService {
             completion(PasteOutcome(
                 wroteClipboard: true,
                 sentKeystroke: false,
-                message: L10n.text("未能自动粘贴，已复制，请手动粘贴", "Couldn't paste automatically. Copied — paste it yourself.")
+                message: PasteOutcome.manualPasteMessage
             ))
             return
         }
@@ -309,7 +318,7 @@ final class PasteService {
             completion(PasteOutcome(
                 wroteClipboard: true,
                 sentKeystroke: sent,
-                message: sent ? nil : L10n.text("未能自动粘贴，已复制，请手动粘贴", "Couldn't paste automatically. Copied — paste it yourself.")
+                message: sent ? nil : PasteOutcome.manualPasteMessage
             ))
         }
     }

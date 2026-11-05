@@ -171,8 +171,8 @@ struct SettingsView: View {
                 }
             }
             Button(L10n.text("打开系统设置", "Open System Settings")) {
-                _ = AccessibilityClient.isTrusted(prompt: true)
-                AccessibilityClient.openSettings()
+                _ = AccessibilityClient.promptAndOpenSettings()
+                model.refreshAccessibility()
             }
             Button(L10n.text("导出诊断", "Export diagnostics")) { exportDiagnostics() }
             Spacer()

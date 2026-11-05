@@ -35,6 +35,20 @@ enum AccessibilityClient {
             NSWorkspace.shared.open(url)
         }
     }
+
+    /**
+     * 弹出系统授权提示，并打开系统设置中的辅助功能页。
+     *
+     * 已授权时不再弹出提示，仍然打开设置页，方便核对开关。
+     *
+     * @return 调用提示时已经授权，或用户在提示里完成授权，返回 true
+     */
+    @discardableResult
+    static func promptAndOpenSettings() -> Bool {
+        let trusted = isTrusted(prompt: true)
+        openSettings()
+        return trusted
+    }
 }
 
 /**

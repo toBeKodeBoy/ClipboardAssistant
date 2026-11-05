@@ -28,6 +28,8 @@
 		A10000000000000000000202 /* PrivacyGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000000F /* PrivacyGate.swift */; };
 		A10000000000000000000203 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000010 /* AppSettings.swift */; };
 		A10000000000000000000204 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000011 /* SettingsView.swift */; };
+		A10000000000000000000335 /* StatusItemInteraction.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000035 /* StatusItemInteraction.swift */; };
+		A10000000000000000000336 /* PermissionGuideView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000036 /* PermissionGuideView.swift */; };
 		A10000000000000000000205 /* AccessibilityClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000012 /* AccessibilityClient.swift */; };
 		A10000000000000000000331 /* AppLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000031 /* AppLog.swift */; };
 		A10000000000000000000206 /* FrontmostApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000013 /* FrontmostApp.swift */; };
@@ -68,6 +70,8 @@
 		A1000000000000000000000F /* PrivacyGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyGate.swift; sourceTree = "<group>"; };
 		A10000000000000000000010 /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		A10000000000000000000011 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A10000000000000000000035 /* StatusItemInteraction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusItemInteraction.swift; sourceTree = "<group>"; };
+		A10000000000000000000036 /* PermissionGuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionGuideView.swift; sourceTree = "<group>"; };
 		A10000000000000000000012 /* AccessibilityClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityClient.swift; sourceTree = "<group>"; };
 		A10000000000000000000031 /* AppLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLog.swift; sourceTree = "<group>"; };
 		A10000000000000000000013 /* FrontmostApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrontmostApp.swift; sourceTree = "<group>"; };
@@ -220,7 +224,9 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000010 /* AppSettings.swift */,
+				A10000000000000000000036 /* PermissionGuideView.swift */,
 				A10000000000000000000011 /* SettingsView.swift */,
+				A10000000000000000000035 /* StatusItemInteraction.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -308,6 +314,8 @@
 				A10000000000000000000202 /* PrivacyGate.swift */,
 				A10000000000000000000203 /* AppSettings.swift */,
 				A10000000000000000000204 /* SettingsView.swift */,
+				A10000000000000000000335 /* StatusItemInteraction.swift */,
+				A10000000000000000000336 /* PermissionGuideView.swift */,
 				A10000000000000000000205 /* AccessibilityClient.swift */,
 				A10000000000000000000331 /* AppLog.swift */,
 				A10000000000000000000206 /* FrontmostApp.swift */,

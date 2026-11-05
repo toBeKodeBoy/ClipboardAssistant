@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /**
@@ -35,6 +36,45 @@ enum PermissionGuideCopy {
             return candidate
         }
         return 360
+    }
+}
+
+/**
+ * 权限说明窗口的位置。
+ *
+ * 放在菜单栏图标正下方。超出屏幕时收回可见区域，过高时压到屏幕高度，内容改由页面滚动。
+ */
+enum PermissionGuideLayout {
+    /**
+     * 计算说明窗口的框架。
+     *
+     * @param window 当前窗口框架，只用宽高
+     * @param buttonFrame 菜单栏按钮在屏幕上的框架
+     * @param visible 按钮所在屏幕的可见区域。nil 时不限制
+     * @return 调整后的窗口框架
+     */
+    static func frame(window: NSRect, buttonFrame: NSRect, visible: NSRect?) -> NSRect {
+        var frame = window
+        frame.origin.x = buttonFrame.midX - frame.width / 2
+        frame.origin.y = buttonFrame.minY - frame.height - 6
+        guard let visible else { return frame }
+        if frame.height > visible.height {
+            frame.size.height = visible.height
+            frame.origin.y = buttonFrame.minY - frame.height - 6
+        }
+        if frame.maxX > visible.maxX {
+            frame.origin.x = visible.maxX - frame.width - 4
+        }
+        if frame.minX < visible.minX {
+            frame.origin.x = visible.minX + 4
+        }
+        if frame.minY < visible.minY {
+            frame.origin.y = visible.minY
+        }
+        if frame.maxY > visible.maxY {
+            frame.origin.y = visible.maxY - frame.height
+        }
+        return frame
     }
 }
 

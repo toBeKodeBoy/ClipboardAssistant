@@ -420,6 +420,16 @@ final class AppModel: ObservableObject {
     }
 
     /**
+     * 弹出辅助功能授权提示，并打开系统设置里的对应页面。
+     *
+     * 权限说明、空历史和关于页共用这一处。返回后立刻刷新授权状态。
+     */
+    func openAccessibilitySettings() {
+        _ = AccessibilityClient.promptAndOpenSettings()
+        refreshAccessibility()
+    }
+
+    /**
      * 按暂停时长开始暂停，或立即恢复。
      *
      * 已经处于暂停时一律恢复。否则按 pauseChoice 设为手动、15 分钟或 1 小时。结束后重画菜单栏图标。

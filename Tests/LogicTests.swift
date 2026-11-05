@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import Carbon
 import SQLite3
 import XCTest
@@ -753,6 +754,11 @@ final class LogicTests: XCTestCase {
             StatusItemInteraction.effect(accessibilityTrusted: true, alternateClick: false),
             .menu
         )
+        XCTAssertEqual(
+            StatusItemInteraction.effect(accessibilityTrusted: true, alternateClick: true),
+            .menu
+        )
+        XCTAssertTrue(StatusItemInteraction.isAlternateClick(rightButton: true, control: true))
     }
 
     func testPermissionGuideQuotesManualPasteInEachLanguage() {
@@ -764,9 +770,410 @@ final class LogicTests: XCTestCase {
             PermissionGuideCopy.historyNote,
             L10n.text(PermissionGuideCopy.historyNoteZH, PermissionGuideCopy.historyNoteEN)
         )
+        XCTAssertEqual(
+            PasteOutcome.manualPasteMessage,
+            L10n.text(PasteOutcome.manualPasteMessageZH, PasteOutcome.manualPasteMessageEN)
+        )
         XCTAssertEqual(PermissionGuideCopy.usableHeight(intrinsic: 300, preferred: 500), 300)
         XCTAssertEqual(PermissionGuideCopy.usableHeight(intrinsic: -1, preferred: 420), 420)
         XCTAssertEqual(PermissionGuideCopy.usableHeight(intrinsic: 10, preferred: 900), 360)
+        XCTAssertEqual(PermissionGuideCopy.usableHeight(intrinsic: 220, preferred: 10), 220)
+        XCTAssertEqual(PermissionGuideCopy.usableHeight(intrinsic: 640, preferred: 10), 640)
+        XCTAssertEqual(PermissionGuideCopy.usableHeight(intrinsic: 219, preferred: 640), 640)
+        XCTAssertEqual(PermissionGuideCopy.usableHeight(intrinsic: 641, preferred: 220), 220)
+        XCTAssertEqual(PermissionGuideCopy.usableHeight(intrinsic: 641, preferred: 219), 360)
+        XCTAssertEqual(PermissionGuideCopy.usableHeight(intrinsic: .nan, preferred: .infinity), 360)
+        XCTAssertEqual(PermissionGuideCopy.width, 460)
+    }
+
+    func testPermissionGuideLayoutClampsEveryEdge() {
+        let window = NSRect(x: 0, y: 0, width: 100, height: 40)
+        let visible = NSRect(x: 0, y: 0, width: 1000, height: 800)
+        let fitted = PermissionGuideLayout.frame(
+            window: window,
+            buttonFrame: NSRect(x: 200, y: 500, width: 20, height: 20),
+            visible: nil
+        )
+        XCTAssertEqual(fitted, NSRect(x: 160, y: 454, width: 100, height: 40))
+        XCTAssertEqual(
+            PermissionGuideLayout.frame(
+                window: window,
+                buttonFrame: NSRect(x: 200, y: 500, width: 20, height: 20),
+                visible: visible
+            ),
+            NSRect(x: 160, y: 454, width: 100, height: 40)
+        )
+        XCTAssertEqual(
+            PermissionGuideLayout.frame(
+                window: window,
+                buttonFrame: NSRect(x: 970, y: 500, width: 20, height: 20),
+                visible: visible
+            ).origin.x,
+            896
+        )
+        XCTAssertEqual(
+            PermissionGuideLayout.frame(
+                window: window,
+                buttonFrame: NSRect(x: 0, y: 500, width: 20, height: 20),
+                visible: visible
+            ).origin.x,
+            4
+        )
+        let tall = PermissionGuideLayout.frame(
+            window: NSRect(x: 0, y: 0, width: 100, height: 200),
+            buttonFrame: NSRect(x: 200, y: 100, width: 20, height: 20),
+            visible: NSRect(x: 0, y: 0, width: 1000, height: 100)
+        )
+        XCTAssertEqual(tall.size.height, 100)
+        XCTAssertEqual(tall.origin.y, 0)
+        let above = PermissionGuideLayout.frame(
+            window: window,
+            buttonFrame: NSRect(x: 200, y: 200, width: 20, height: 20),
+            visible: NSRect(x: 0, y: 0, width: 1000, height: 100)
+        )
+        XCTAssertEqual(above, NSRect(x: 160, y: 60, width: 100, height: 40))
+    }
+
+    @MainActor
+    func testPermissionGuideViewRendersBothActions() {
+        var settings = 0
+        var panels = 0
+        let view = PermissionGuideView(onOpenSettings: { settings += 1 }, onOpenPanel: { panels += 1 })
+        _ = view.body
+        view.onOpenSettings()
+        view.onOpenPanel()
+        XCTAssertEqual(settings, 1)
+        XCTAssertEqual(panels, 1)
+    }
+
+    func testAccessibilityPromptOptionsAndStubbedOpen() {
+        XCTAssertNil(AccessibilityClient.promptOptions(false))
+        let prompted = AccessibilityClient.promptOptions(true)
+        let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+        XCTAssertEqual((prompted as NSDictionary?)?[promptKey] as? Bool, true)
+        _ = AccessibilityClient.readTrusted(nil)
+        _ = AccessibilityClient.readTrusted([:] as CFDictionary)
+        let query = AccessibilityClient.queryTrusted
+        let activate = AccessibilityClient.activateApp
+        let open = AccessibilityClient.openURL
+        defer {
+            AccessibilityClient.queryTrusted = query
+            AccessibilityClient.activateApp = activate
+            AccessibilityClient.openURL = open
+        }
+        _ = query(false)
+        activate()
+        var prompts: [Bool] = []
+        var urls: [URL] = []
+        var activations = 0
+        AccessibilityClient.queryTrusted = { prompt in
+            prompts.append(prompt)
+            return prompt
+        }
+        AccessibilityClient.activateApp = { activations += 1 }
+        AccessibilityClient.openURL = { urls.append($0) }
+        XCTAssertTrue(AccessibilityClient.promptAndOpenSettings())
+        AccessibilityClient.queryTrusted = { prompt in
+            prompts.append(prompt)
+            return false
+        }
+        XCTAssertFalse(AccessibilityClient.promptAndOpenSettings())
+        XCTAssertEqual(activations, 2)
+        XCTAssertEqual(prompts, [true, true])
+        XCTAssertEqual(urls, [AccessibilityClient.settingsURL, AccessibilityClient.settingsURL])
+    }
+
+    @MainActor
+    func testAccessibilitySettingsButtonsRefreshTrust() throws {
+        let query = AccessibilityClient.queryTrusted
+        let activate = AccessibilityClient.activateApp
+        let open = AccessibilityClient.openURL
+        AccessibilityClient.activateApp = {}
+        AccessibilityClient.openURL = { _ in }
+        AccessibilityClient.queryTrusted = { _ in false }
+        let harness = try deleteHarness()
+        var windows: [NSWindow] = []
+        defer {
+            for window in windows {
+                window.orderOut(nil)
+                window.contentViewController = nil
+            }
+            harness.cleanup()
+            AccessibilityClient.queryTrusted = query
+            AccessibilityClient.activateApp = activate
+            AccessibilityClient.openURL = open
+        }
+
+        harness.model.accessibilityTrusted = true
+        windows.append(attachForRender(HistoryPanelView().environmentObject(harness.model)))
+        harness.model.accessibilityTrusted = false
+        windows.append(attachForRender(HistoryPanelView().environmentObject(harness.model)))
+        AccessibilityClient.queryTrusted = { _ in true }
+        windows.append(attachForRender(SettingsView(initialTab: .about).environmentObject(harness.model)))
+        AccessibilityClient.queryTrusted = { _ in false }
+        windows.append(attachForRender(SettingsView(initialTab: .about).environmentObject(harness.model)))
+        flushMain()
+
+        var opened: [URL] = []
+        var prompts: [Bool] = []
+        AccessibilityClient.openURL = { opened.append($0) }
+        harness.model.openAccessibilitySettings()
+        XCTAssertEqual(opened, [AccessibilityClient.settingsURL])
+        XCTAssertFalse(harness.model.accessibilityTrusted)
+        AccessibilityClient.queryTrusted = { prompt in
+            prompts.append(prompt)
+            return true
+        }
+        harness.model.openAccessibilitySettings()
+        XCTAssertEqual(prompts, [true, false])
+        XCTAssertEqual(opened.count, 2)
+        XCTAssertTrue(harness.model.accessibilityTrusted)
+        harness.model.openAccessibilitySettings()
+        XCTAssertEqual(prompts, [true, false, true, false])
+        XCTAssertEqual(opened.count, 3)
+        XCTAssertTrue(harness.model.accessibilityTrusted)
+    }
+
+    @MainActor
+    func testStatusIconDrawsPauseSlashAndTrustDot() {
+        for paused in [false, true] {
+            for trusted in [false, true] {
+                let image = StatusIcon.image(paused: paused, trusted: trusted)
+                XCTAssertEqual(image.size, NSSize(width: 18, height: 18))
+                XCTAssertTrue(image.isTemplate)
+                let canvas = NSImage(size: image.size)
+                canvas.lockFocus()
+                image.draw(in: NSRect(origin: .zero, size: image.size))
+                canvas.unlockFocus()
+            }
+        }
+    }
+
+    @MainActor
+    func testStatusItemCoversGuideMenuClicksAndPolling() throws {
+        let query = AccessibilityClient.queryTrusted
+        let activate = AccessibilityClient.activateApp
+        let open = AccessibilityClient.openURL
+        let interval = StatusItemController.trustPollInterval
+        StatusItemController.trustPollInterval = 0.05
+        AccessibilityClient.queryTrusted = { _ in false }
+        AccessibilityClient.activateApp = {}
+        AccessibilityClient.openURL = { _ in }
+        let harness = try deleteHarness()
+        let panel = PanelController(model: harness.model)
+        let controller = StatusItemController(model: harness.model, panel: panel)
+        defer {
+            panel.closePanel()
+            controller.removeFromStatusBar()
+            harness.cleanup()
+            AccessibilityClient.queryTrusted = query
+            AccessibilityClient.activateApp = activate
+            AccessibilityClient.openURL = open
+            StatusItemController.trustPollInterval = interval
+        }
+
+        harness.model.settings.appearance = .dark
+        harness.model.settings.appearance = .light
+        harness.model.settings.appearance = .system
+
+        let spyMenu = TrackingMenu()
+        let anchor = NSView(frame: NSRect(x: 0, y: 0, width: 20, height: 16))
+        controller.presentAlternateMenu(spyMenu, nil, anchor, 4)
+        XCTAssertEqual(spyMenu.points, [NSPoint(x: 0, y: 4)])
+        let event = try XCTUnwrap(Self.mouseEvent(type: .leftMouseUp, location: NSPoint(x: 3, y: 5), flags: []))
+        controller.presentAlternateMenu(spyMenu, event, anchor, 4)
+        XCTAssertEqual(spyMenu.points, [NSPoint(x: 0, y: 4), anchor.convert(event.locationInWindow, from: nil)])
+
+        var sawDefaultClick = false
+        controller.presentAlternateMenu = { _, _, _, _ in sawDefaultClick = true }
+        controller.showAlternateMenu(from: NSButton(frame: NSRect(x: 0, y: 0, width: 8, height: 8)))
+        XCTAssertTrue(sawDefaultClick)
+
+        let spyButton = TrackingButton()
+        controller.performPrimaryClick(spyButton)
+        XCTAssertEqual(spyButton.clicks, 1)
+
+        let polled = expectation(description: "trust poll")
+        let installed = harness.model.onAccessibilityChange
+        var fulfilled = false
+        harness.model.onAccessibilityChange = { trusted in
+            installed?(trusted)
+            if trusted, !fulfilled {
+                fulfilled = true
+                controller.stopTrustPolling()
+                polled.fulfill()
+            }
+        }
+        AccessibilityClient.queryTrusted = { _ in true }
+        wait(for: [polled], timeout: 2)
+        XCTAssertTrue(harness.model.accessibilityTrusted)
+        controller.stopTrustPolling()
+        StatusItemController.trustPollInterval = 10_000
+        controller.startTrustTimer()
+        controller.startTrustTimer()
+        controller.stopTrustPolling()
+        StatusItemController.trustPollInterval = 0.05
+        AccessibilityClient.queryTrusted = { _ in false }
+        harness.model.refreshAccessibility()
+        XCTAssertFalse(harness.model.accessibilityTrusted)
+
+        let menu = NSMenu()
+        controller.menuWillOpen(menu)
+        XCTAssertEqual(menu.items.first?.isEnabled, false)
+        XCTAssertEqual(menu.items.first?.title, L10n.text("暂无记录", "No history"))
+        for index in 0..<11 {
+            _ = try harness.insert("row-\(index)")
+        }
+        harness.model.settings.pauseHotkeyDisplay = "⌘⇧P"
+        harness.model.settings.pauseHotkeyConflict = false
+        controller.menuWillOpen(menu)
+        let recent = menu.items.prefix { !$0.isSeparatorItem }
+        XCTAssertEqual(recent.count, 10)
+        let pause = try XCTUnwrap(menu.items.first { $0.action == NSSelectorFromString("togglePause") })
+        XCTAssertEqual(pause.title, StatusMenuText.pauseItem(isPaused: false, hotkeyDisplay: "⌘⇧P", available: true))
+        harness.model.settings.pauseHotkeyConflict = true
+        controller.menuWillOpen(menu)
+        let conflicted = try XCTUnwrap(menu.items.first { $0.action == NSSelectorFromString("togglePause") })
+        XCTAssertEqual(conflicted.title, StatusMenuText.pauseItem(isPaused: false, hotkeyDisplay: "⌘⇧P", available: false))
+
+        let pasted = try XCTUnwrap(menu.items.first { $0.action == NSSelectorFromString("pasteRecent:") })
+        pasted.representedObject = 1
+        NSApp.sendAction(pasted.action!, to: pasted.target, from: pasted)
+        pasted.representedObject = "missing-id"
+        NSApp.sendAction(pasted.action!, to: pasted.target, from: pasted)
+
+        NSApp.sendAction(pause.action!, to: pause.target, from: pause)
+        XCTAssertTrue(harness.model.settings.isPaused)
+        NSApp.sendAction(pause.action!, to: pause.target, from: pause)
+        XCTAssertFalse(harness.model.settings.isPaused)
+
+        AccessibilityClient.queryTrusted = { _ in true }
+        controller.menuWillOpen(menu)
+        AccessibilityClient.queryTrusted = { _ in false }
+        controller.menuDidClose(menu)
+        let closed = expectation(description: "menu closed")
+        DispatchQueue.main.async {
+            DispatchQueue.main.async { closed.fulfill() }
+        }
+        wait(for: [closed], timeout: 1)
+
+        controller.clickEvent = { nil }
+        XCTAssertTrue(NSApp.sendAction(NSSelectorFromString("statusClicked"), to: controller, from: nil))
+        let leftUp = try XCTUnwrap(Self.mouseEvent(type: .leftMouseUp, location: .zero, flags: []))
+        controller.clickEvent = { leftUp }
+        controller.handleStatusClick()
+        var anchors: [CGFloat] = []
+        controller.presentAlternateMenu = { _, _, _, y in anchors.append(y) }
+        let rightUp = try XCTUnwrap(Self.mouseEvent(type: .rightMouseUp, location: .zero, flags: []))
+        let rightDown = try XCTUnwrap(Self.mouseEvent(type: .rightMouseDown, location: .zero, flags: []))
+        let controlClick = try XCTUnwrap(Self.mouseEvent(type: .leftMouseUp, location: .zero, flags: [.control]))
+        controller.clickEvent = { rightUp }
+        controller.handleStatusClick()
+        controller.clickEvent = { rightDown }
+        controller.handleStatusClick()
+        controller.clickEvent = { controlClick }
+        controller.handleStatusClick()
+        controller.showAlternateMenu(from: nil)
+        let flipped = FlippedButton(frame: NSRect(x: 0, y: 0, width: 12, height: 18))
+        controller.showAlternateMenu(from: flipped)
+        let plain = NSButton(frame: NSRect(x: 0, y: 0, width: 12, height: 14))
+        controller.showAlternateMenu(from: plain)
+        XCTAssertEqual(Array(anchors.suffix(2)), [CGFloat(18), 0])
+
+        var primary = 0
+        controller.performPrimaryClick = { _ in
+            primary += 1
+            controller.menuWillOpen(NSMenu())
+        }
+        AccessibilityClient.queryTrusted = { _ in true }
+        controller.clickEvent = { nil }
+        controller.handleStatusClick()
+        XCTAssertEqual(primary, 1)
+        controller.clickEvent = { rightUp }
+        controller.handleStatusClick()
+        controller.clickEvent = { nil }
+        controller.showPrimaryMenu(clicking: nil)
+        controller.menuDidClose(NSMenu())
+        wait(for: [expectationClosed()], timeout: 1)
+        controller.performPrimaryClick = { _ in primary += 1 }
+        controller.showPrimaryMenu(clicking: plain)
+        XCTAssertGreaterThan(primary, 1)
+        AccessibilityClient.queryTrusted = { _ in false }
+        harness.model.refreshAccessibility()
+        controller.showPrimaryMenu(clicking: plain)
+        XCTAssertGreaterThan(primary, 2)
+
+        let guide = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 200, height: 80), styleMask: [.titled], backing: .buffered, defer: false)
+        controller.place(guide, anchorButton: nil, anchorWindow: nil)
+        let host = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 240, height: 120), styleMask: [.titled], backing: .buffered, defer: false)
+        host.contentView?.addSubview(plain)
+        controller.place(guide, anchorButton: plain, anchorWindow: nil)
+        controller.place(guide, anchorButton: plain, anchorWindow: host)
+
+        var opened: [URL] = []
+        AccessibilityClient.openURL = { opened.append($0) }
+        AccessibilityClient.queryTrusted = { _ in false }
+        let openGuideSettings = try XCTUnwrap(controller.guideOpenSettings)
+        openGuideSettings()
+        XCTAssertEqual(opened, [AccessibilityClient.settingsURL])
+        let openGuidePanel = try XCTUnwrap(controller.guideOpenPanel)
+        openGuidePanel()
+        harness.model.onHotkey?()
+        harness.model.onHotkey?()
+        harness.model.onHotkey?()
+
+        let settingsItem = try XCTUnwrap(menu.items.first { $0.action == NSSelectorFromString("openSettings") })
+        NSApp.sendAction(settingsItem.action!, to: settingsItem.target, from: settingsItem)
+        NSApp.sendAction(settingsItem.action!, to: settingsItem.target, from: settingsItem)
+        let openItem = try XCTUnwrap(menu.items.first { $0.action == NSSelectorFromString("openPanel") })
+        NSApp.sendAction(openItem.action!, to: openItem.target, from: openItem)
+        harness.model.settings.appearance = harness.model.settings.appearance == .dark ? .light : .dark
+        harness.model.settings.appearance = .system
+    }
+
+    private func flushMain() {
+        let flushed = expectation(description: "flush main")
+        DispatchQueue.main.async {
+            DispatchQueue.main.async { flushed.fulfill() }
+        }
+        wait(for: [flushed], timeout: 1)
+    }
+
+    @MainActor
+    private func attachForRender<V: View>(_ view: V) -> NSWindow {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 480),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentViewController = NSHostingController(rootView: view)
+        window.orderFront(nil)
+        window.layoutIfNeeded()
+        window.contentView?.layoutSubtreeIfNeeded()
+        return window
+    }
+
+    private func expectationClosed() -> XCTestExpectation {
+        let closed = expectation(description: "menu closed again")
+        DispatchQueue.main.async {
+            DispatchQueue.main.async { closed.fulfill() }
+        }
+        return closed
+    }
+
+    private static func mouseEvent(type: NSEvent.EventType, location: NSPoint, flags: NSEvent.ModifierFlags) -> NSEvent? {
+        NSEvent.mouseEvent(
+            with: type,
+            location: location,
+            modifierFlags: flags,
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            eventNumber: 0,
+            clickCount: 1,
+            pressure: 1
+        )
     }
 
     func testStatusMenuPauseTitleIncludesTheShortcutWhenSet() {
@@ -1260,6 +1667,27 @@ final class LogicTests: XCTestCase {
             payloadOversize: false
         )
     }
+}
+
+private final class TrackingMenu: NSMenu {
+    var points: [NSPoint] = []
+
+    override func popUp(positioning item: NSMenuItem?, at location: NSPoint, in view: NSView?) -> Bool {
+        points.append(location)
+        return true
+    }
+}
+
+private final class TrackingButton: NSButton {
+    var clicks = 0
+
+    override func performClick(_ sender: Any?) {
+        clicks += 1
+    }
+}
+
+private final class FlippedButton: NSButton {
+    override var isFlipped: Bool { true }
 }
 
 private final class FakeGlobalHotkeys: GlobalHotkeys {

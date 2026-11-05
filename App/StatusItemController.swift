@@ -19,8 +19,36 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var settingsWindow: NSWindow?
     private var permissionWindow: NSPanel?
     private var permissionHost: NSHostingController<PermissionGuideView>?
+    /** 权限说明里「打开系统设置」使用的动作。和页面按钮是同一个闭包。 */
+    var guideOpenSettings: (() -> Void)?
+    /** 权限说明里「打开主面板」使用的动作。和页面按钮是同一个闭包。 */
+    var guideOpenPanel: (() -> Void)?
     private var trustTimer: Timer?
     private var menuIsOpen = false
+
+    /** 授权轮询间隔。测试可改短，避免干等一秒。 */
+    static var trustPollInterval: TimeInterval = 1
+
+    /** 读取这次点击的事件。测试可换成指定的鼠标事件。 */
+    var clickEvent: () -> NSEvent? = { NSApp.currentEvent }
+
+    /**
+     * 弹出右键或 Control 点击对应的菜单。
+     *
+     * 测试换成记录调用的实现，避免进入系统菜单跟踪。
+     */
+    var presentAlternateMenu: (NSMenu, NSEvent?, NSView, CGFloat) -> Void = { menu, event, view, anchorY in
+        let point: NSPoint
+        if let event {
+            point = view.convert(event.locationInWindow, from: nil)
+        } else {
+            point = NSPoint(x: 0, y: anchorY)
+        }
+        menu.popUp(positioning: nil, at: point, in: view)
+    }
+
+    /** 模拟状态栏按钮点击以打开系统菜单。测试可换成不跟踪菜单的实现。 */
+    var performPrimaryClick: (NSButton) -> Void = { $0.performClick(nil) }
 
     /**
      * 创建状态栏图标，并把全局热键接到面板开关。
@@ -134,29 +162,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
      * @return 18 点模板图
      */
     private func icon() -> NSImage {
-        let paused = model.settings.isPaused
-        let trusted = model.accessibilityTrusted
-        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
-            let symbol = NSImage(systemSymbolName: "clipboard", accessibilityDescription: nil)?
-                .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .regular))
-            symbol?.isTemplate = false
-            symbol?.draw(in: rect.insetBy(dx: 1, dy: 2))
-            if paused {
-                let slash = NSBezierPath()
-                slash.move(to: NSPoint(x: 3, y: 3))
-                slash.line(to: NSPoint(x: 15, y: 15))
-                slash.lineWidth = 1.4
-                NSColor.black.setStroke()
-                slash.stroke()
-            }
-            if !trusted {
-                NSColor.black.setFill()
-                NSBezierPath(ovalIn: NSRect(x: 12, y: 12, width: 5, height: 5)).fill()
-            }
-            return true
-        }
-        image.isTemplate = true
-        return image
+        StatusIcon.image(paused: model.settings.isPaused, trusted: model.accessibilityTrusted)
     }
 
     /**
@@ -197,14 +203,23 @@ final class StatusItemController: NSObject, NSMenuDelegate {
      * 右键或按住 Control 点击打开原来的菜单。抬起时如果已经授权，改为打开菜单。
      */
     @objc private func statusClicked() {
-        let event = NSApp.currentEvent
+        handleStatusClick()
+    }
+
+    /**
+     * 处理一次菜单栏点击。
+     *
+     * 右键或 Control 点击打开原来的菜单。其余点击按当前授权状态打开菜单或权限说明。
+     */
+    func handleStatusClick() {
+        let event = clickEvent()
         let alternate = StatusItemInteraction.isAlternateClick(
             rightButton: event?.type == .rightMouseUp || event?.type == .rightMouseDown,
             control: event?.modifierFlags.contains(.control) == true
         )
         if StatusItemInteraction.effect(accessibilityTrusted: model.accessibilityTrusted, alternateClick: alternate) == .menu,
            alternate {
-            showAlternateMenu()
+            showAlternateMenu(from: item.button)
             return
         }
         model.refreshAccessibility()
@@ -215,7 +230,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             alternateClick: alternate
         ) {
         case .menu:
-            showPrimaryMenu()
+            showPrimaryMenu(clicking: item.button)
         case .permissionGuide:
             showPermissionGuide()
         }
@@ -225,16 +240,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
      * 在鼠标抬起后打开原来的菜单，不把菜单挂到状态栏按钮上。
      *
      * 未授权时按钮没有菜单。这里直接弹出，避免 AppKit 在按下事件里再跟踪一次。
+     *
+     * @param button 菜单栏按钮。为空时不弹出
      */
-    private func showAlternateMenu() {
-        guard let button = item.button else { return }
+    func showAlternateMenu(from button: NSButton?) {
+        guard let button else { return }
         button.highlight(false)
-        if let event = NSApp.currentEvent {
-            NSMenu.popUpContextMenu(menu, with: event, for: button)
-            return
-        }
-        let y = button.isFlipped ? button.bounds.height : button.bounds.minY
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: y), in: button)
+        let anchorY = button.isFlipped ? button.bounds.height : button.bounds.minY
+        presentAlternateMenu(menu, clickEvent(), button, anchorY)
     }
 
     /**
@@ -242,12 +255,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
      *
      * 先清掉按钮动作，避免 performClick 再次进入 statusClicked。这次发生在鼠标抬起之后。
      * 菜单没有打开时，按当前授权状态把点击去向设回去。
+     *
+     * @param button 被点击的按钮。为空时只挂上菜单
      */
-    private func showPrimaryMenu() {
+    func showPrimaryMenu(clicking button: NSButton?) {
         item.menu = menu
-        item.button?.target = nil
-        item.button?.action = nil
-        item.button?.performClick(nil)
+        button?.target = nil
+        button?.action = nil
+        if let button {
+            performPrimaryClick(button)
+        }
         if !menuIsOpen {
             applyInteraction()
         }
@@ -279,9 +296,17 @@ final class StatusItemController: NSObject, NSMenuDelegate {
      */
     private func ensurePermissionWindow() -> NSPanel {
         if let permissionWindow { return permissionWindow }
+        let openSettings = { [weak self] in
+            self?.openAccessibilitySettings()
+        }
+        let openPanel = { [weak self] in
+            self?.openPanelFromGuide()
+        }
+        guideOpenSettings = openSettings
+        guideOpenPanel = openPanel
         let host = NSHostingController(rootView: PermissionGuideView(
-            onOpenSettings: { [weak self] in self?.openAccessibilitySettings() },
-            onOpenPanel: { [weak self] in self?.openPanelFromGuide() }
+            onOpenSettings: openSettings,
+            onOpenPanel: openPanel
         ))
         let window = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: PermissionGuideCopy.width, height: 360),
@@ -329,33 +354,29 @@ final class StatusItemController: NSObject, NSMenuDelegate {
      * @param window 要摆放的权限说明
      */
     private func place(_ window: NSPanel) {
-        guard let button = item.button, let buttonWindow = button.window else {
+        place(window, anchorButton: item.button, anchorWindow: item.button?.window)
+    }
+
+    /**
+     * 把权限说明放到锚点按钮下方。
+     *
+     * 按钮或它所在窗口缺失时改放到屏幕中心。
+     *
+     * @param window 要摆放的权限说明
+     * @param anchorButton 用来对齐的按钮
+     * @param anchorWindow 按钮所在窗口
+     */
+    func place(_ window: NSPanel, anchorButton: NSButton?, anchorWindow: NSWindow?) {
+        guard let anchorButton, let anchorWindow else {
             window.center()
             return
         }
-        let buttonFrame = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
-        var frame = window.frame
-        frame.origin.x = buttonFrame.midX - frame.width / 2
-        frame.origin.y = buttonFrame.minY - frame.height - 6
-        if let screen = buttonWindow.screen {
-            let visible = screen.visibleFrame
-            if frame.height > visible.height {
-                frame.size.height = visible.height
-                frame.origin.y = buttonFrame.minY - frame.height - 6
-            }
-            if frame.maxX > visible.maxX {
-                frame.origin.x = visible.maxX - frame.width - 4
-            }
-            if frame.minX < visible.minX {
-                frame.origin.x = visible.minX + 4
-            }
-            if frame.minY < visible.minY {
-                frame.origin.y = visible.minY
-            }
-            if frame.maxY > visible.maxY {
-                frame.origin.y = visible.maxY - frame.height
-            }
-        }
+        let buttonFrame = anchorWindow.convertToScreen(anchorButton.convert(anchorButton.bounds, to: nil))
+        let frame = PermissionGuideLayout.frame(
+            window: window.frame,
+            buttonFrame: buttonFrame,
+            visible: anchorWindow.screen?.visibleFrame
+        )
         window.setFrame(frame, display: false)
     }
 
@@ -364,9 +385,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
      *
      * 授权成功后关掉说明页，菜单栏点击恢复为普通菜单。
      */
-    private func openAccessibilitySettings() {
-        _ = AccessibilityClient.promptAndOpenSettings()
-        model.refreshAccessibility()
+    func openAccessibilitySettings() {
+        model.openAccessibilitySettings()
     }
 
     /**
@@ -374,7 +394,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
      *
      * 先收起说明页，再按「面板位置」显示主面板，避免两扇窗口叠在一起。
      */
-    private func openPanelFromGuide() {
+    func openPanelFromGuide() {
         permissionWindow?.orderOut(nil)
         panel.show()
     }
@@ -384,15 +404,37 @@ final class StatusItemController: NSObject, NSMenuDelegate {
      *
      * 用户在系统设置里打开或关闭辅助功能后，圆点和点击去向不用等下一次点图标。
      */
-    private func startTrustTimer() {
+    func startTrustTimer() {
         trustTimer?.invalidate()
-        let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: Self.trustPollInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.model.refreshAccessibility()
             }
         }
         trustTimer = timer
         RunLoop.main.add(timer, forMode: .common)
+    }
+
+    /**
+     * 停止授权轮询。
+     *
+     * 测试在确认过一次轮询后调用，避免后续改授权桩时被计时器打断。
+     */
+    func stopTrustPolling() {
+        trustTimer?.invalidate()
+        trustTimer = nil
+    }
+
+    /**
+     * 停止授权轮询，并从状态栏移除图标。
+     *
+     * 测试结束时调用，避免轮询落到后续用例上。
+     */
+    func removeFromStatusBar() {
+        stopTrustPolling()
+        permissionWindow?.orderOut(nil)
+        settingsWindow?.orderOut(nil)
+        NSStatusBar.system.removeStatusItem(item)
     }
 
     /**
@@ -448,6 +490,44 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         settingsWindow?.center()
         settingsWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+}
+
+/**
+ * 菜单栏模板图标。
+ *
+ * 暂停画斜杠，辅助功能未授权画圆点。绘制放在这里，测试可以把它画出来。
+ */
+enum StatusIcon {
+    /**
+     * 绘制 18 点模板图标。
+     *
+     * @param paused 暂停时加斜杠
+     * @param trusted 未授权时加圆点
+     * @return 模板图
+     */
+    static func image(paused: Bool, trusted: Bool) -> NSImage {
+        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
+            let symbol = NSImage(systemSymbolName: "clipboard", accessibilityDescription: nil)?
+                .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .regular))
+            symbol?.isTemplate = false
+            symbol?.draw(in: rect.insetBy(dx: 1, dy: 2))
+            if paused {
+                let slash = NSBezierPath()
+                slash.move(to: NSPoint(x: 3, y: 3))
+                slash.line(to: NSPoint(x: 15, y: 15))
+                slash.lineWidth = 1.4
+                NSColor.black.setStroke()
+                slash.stroke()
+            }
+            if !trusted {
+                NSColor.black.setFill()
+                NSBezierPath(ovalIn: NSRect(x: 12, y: 12, width: 5, height: 5)).fill()
+            }
+            return true
+        }
+        image.isTemplate = true
+        return image
     }
 }
 

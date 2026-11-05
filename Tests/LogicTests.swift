@@ -738,6 +738,35 @@ final class LogicTests: XCTestCase {
     func testStatusClickOpensPermissionGuideUntilTrusted() {
         XCTAssertEqual(StatusItemInteraction.destination(accessibilityTrusted: false), .permissionGuide)
         XCTAssertEqual(StatusItemInteraction.destination(accessibilityTrusted: true), .menu)
+        XCTAssertTrue(StatusItemInteraction.isAlternateClick(rightButton: true, control: false))
+        XCTAssertTrue(StatusItemInteraction.isAlternateClick(rightButton: false, control: true))
+        XCTAssertFalse(StatusItemInteraction.isAlternateClick(rightButton: false, control: false))
+        XCTAssertEqual(
+            StatusItemInteraction.effect(accessibilityTrusted: false, alternateClick: false),
+            .permissionGuide
+        )
+        XCTAssertEqual(
+            StatusItemInteraction.effect(accessibilityTrusted: false, alternateClick: true),
+            .menu
+        )
+        XCTAssertEqual(
+            StatusItemInteraction.effect(accessibilityTrusted: true, alternateClick: false),
+            .menu
+        )
+    }
+
+    func testPermissionGuideQuotesManualPasteInEachLanguage() {
+        XCTAssertTrue(PermissionGuideCopy.historyNoteZH.contains(PasteOutcome.manualPasteMessageZH))
+        XCTAssertFalse(PermissionGuideCopy.historyNoteZH.contains(PasteOutcome.manualPasteMessageEN))
+        XCTAssertTrue(PermissionGuideCopy.historyNoteEN.contains(PasteOutcome.manualPasteMessageEN))
+        XCTAssertFalse(PermissionGuideCopy.historyNoteEN.contains(PasteOutcome.manualPasteMessageZH))
+        XCTAssertEqual(
+            PermissionGuideCopy.historyNote,
+            L10n.text(PermissionGuideCopy.historyNoteZH, PermissionGuideCopy.historyNoteEN)
+        )
+        XCTAssertEqual(PermissionGuideCopy.usableHeight(intrinsic: 300, preferred: 500), 300)
+        XCTAssertEqual(PermissionGuideCopy.usableHeight(intrinsic: -1, preferred: 420), 420)
+        XCTAssertEqual(PermissionGuideCopy.usableHeight(intrinsic: 10, preferred: 900), 360)
     }
 
     func testStatusMenuPauseTitleIncludesTheShortcutWhenSet() {

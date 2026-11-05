@@ -5,7 +5,7 @@ import SwiftUI
  * 菜单栏图标和菜单。
  *
  * 打开菜单时立刻记下前台应用。图标为模板图：暂停加斜杠，未授权加圆点。
- * 未授权时左键打开权限说明，右键仍打开原来的菜单。
+ * 未授权时左键打开权限说明。右键或按住 Control 点击仍打开原来的菜单。
  *
  * @author toBeKodeBoy
  * @date 2026/10/27
@@ -18,6 +18,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let menu: NSMenu
     private var settingsWindow: NSWindow?
     private var permissionWindow: NSPanel?
+    private var permissionHost: NSHostingController<PermissionGuideView>?
     private var trustTimer: Timer?
     private var menuIsOpen = false
 
@@ -73,7 +74,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /**
      * 菜单关闭后按当前授权状态恢复点击去向。
      *
-     * 右键弹出菜单时会暂时挂上菜单。未授权则在关闭后再摘掉，避免下一次左键仍打开菜单。
+     * 刚变为已授权时，左键会暂时挂上菜单。关闭后再按授权状态决定是否摘掉。
      *
      * @param menu 刚关闭的状态栏菜单
      */
@@ -185,37 +186,64 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             item.menu = nil
             item.button?.target = self
             item.button?.action = #selector(statusClicked)
-            item.button?.sendAction(on: [.leftMouseDown, .rightMouseDown])
+            item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
     }
 
     /**
      * 未授权时的图标点击。
      *
-     * 左键打开权限说明。右键仍弹出原来的菜单。点击当下如果已经授权，改为打开菜单。
+     * 动作挂在鼠标抬起上，避免在按下的跟踪过程中再开一轮菜单。左键打开权限说明。
+     * 右键或按住 Control 点击打开原来的菜单。抬起时如果已经授权，改为打开菜单。
      */
     @objc private func statusClicked() {
-        if NSApp.currentEvent?.type == .rightMouseDown || NSApp.currentEvent?.type == .rightMouseUp {
-            popUpMenu()
+        let event = NSApp.currentEvent
+        let alternate = StatusItemInteraction.isAlternateClick(
+            rightButton: event?.type == .rightMouseUp || event?.type == .rightMouseDown,
+            control: event?.modifierFlags.contains(.control) == true
+        )
+        if StatusItemInteraction.effect(accessibilityTrusted: model.accessibilityTrusted, alternateClick: alternate) == .menu,
+           alternate {
+            showAlternateMenu()
             return
         }
         model.refreshAccessibility()
         item.button?.image = icon()
         applyInteraction()
-        switch StatusItemInteraction.destination(accessibilityTrusted: model.accessibilityTrusted) {
+        switch StatusItemInteraction.effect(
+            accessibilityTrusted: model.accessibilityTrusted,
+            alternateClick: alternate
+        ) {
         case .menu:
-            popUpMenu()
+            showPrimaryMenu()
         case .permissionGuide:
             showPermissionGuide()
         }
     }
 
     /**
-     * 暂时挂上菜单并模拟点击，让右键走原来的菜单。
+     * 在鼠标抬起后打开原来的菜单，不把菜单挂到状态栏按钮上。
      *
-     * 先清掉按钮动作，避免 performClick 再次进入 statusClicked。菜单关闭后由 menuDidClose 按授权状态决定是否再摘掉。
+     * 未授权时按钮没有菜单。这里直接弹出，避免 AppKit 在按下事件里再跟踪一次。
      */
-    private func popUpMenu() {
+    private func showAlternateMenu() {
+        guard let button = item.button else { return }
+        button.highlight(false)
+        if let event = NSApp.currentEvent {
+            NSMenu.popUpContextMenu(menu, with: event, for: button)
+            return
+        }
+        let y = button.isFlipped ? button.bounds.height : button.bounds.minY
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: y), in: button)
+    }
+
+    /**
+     * 暂时挂上菜单并模拟一次点击，让刚变为已授权的左键走系统菜单。
+     *
+     * 先清掉按钮动作，避免 performClick 再次进入 statusClicked。这次发生在鼠标抬起之后。
+     * 菜单没有打开时，按当前授权状态把点击去向设回去。
+     */
+    private func showPrimaryMenu() {
         item.menu = menu
         item.button?.target = nil
         item.button?.action = nil
@@ -232,6 +260,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
      */
     private func showPermissionGuide() {
         let window = ensurePermissionWindow()
+        if let permissionHost {
+            window.setContentSize(fittedGuideSize(permissionHost))
+        }
         applyAppearance()
         place(window)
         window.makeKeyAndOrderFront(nil)
@@ -253,7 +284,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             onOpenPanel: { [weak self] in self?.openPanelFromGuide() }
         ))
         let window = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 340),
+            contentRect: NSRect(x: 0, y: 0, width: PermissionGuideCopy.width, height: 360),
             styleMask: [.titled, .closable, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -266,10 +297,28 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         window.hidesOnDeactivate = false
         window.isReleasedWhenClosed = false
         window.isMovableByWindowBackground = true
+        host.sizingOptions = [.intrinsicContentSize, .preferredContentSize]
         window.contentViewController = host
-        window.setContentSize(NSSize(width: 460, height: 340))
+        permissionHost = host
+        window.setContentSize(fittedGuideSize(host))
         permissionWindow = window
         return window
+    }
+
+    /**
+     * 按说明页内容计算窗口高度。
+     *
+     * 内容高出一屏时由页面内的滚动区域承接。量不到高度时用 360。
+     *
+     * @param host 说明页的宿主控制器
+     * @return 内容宽度和可用高度
+     */
+    private func fittedGuideSize(_ host: NSHostingController<PermissionGuideView>) -> NSSize {
+        host.view.layoutSubtreeIfNeeded()
+        let intrinsic = host.view.intrinsicContentSize.height
+        let preferred = host.preferredContentSize.height
+        let height = PermissionGuideCopy.usableHeight(intrinsic: intrinsic, preferred: preferred)
+        return NSSize(width: PermissionGuideCopy.width, height: height)
     }
 
     /**
@@ -290,6 +339,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         frame.origin.y = buttonFrame.minY - frame.height - 6
         if let screen = buttonWindow.screen {
             let visible = screen.visibleFrame
+            if frame.height > visible.height {
+                frame.size.height = visible.height
+                frame.origin.y = buttonFrame.minY - frame.height - 6
+            }
             if frame.maxX > visible.maxX {
                 frame.origin.x = visible.maxX - frame.width - 4
             }
@@ -297,7 +350,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                 frame.origin.x = visible.minX + 4
             }
             if frame.minY < visible.minY {
-                frame.origin.y = visible.minY + 4
+                frame.origin.y = visible.minY
             }
             if frame.maxY > visible.maxY {
                 frame.origin.y = visible.maxY - frame.height

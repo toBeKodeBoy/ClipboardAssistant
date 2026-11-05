@@ -657,6 +657,34 @@ final class LogicTests: XCTestCase {
         XCTAssertEqual(model.banner, AppModel.clearAllFailedMessage)
     }
 
+    func testPauseHotkeyStartsUnsetAndRejectsThePanelChord() {
+        XCTAssertEqual(
+            HotkeyPlan.pause(code: 0, modifiers: 0, display: "", panelCode: 9, panelModifiers: 768),
+            .skip
+        )
+        XCTAssertEqual(
+            HotkeyPlan.pause(code: 9, modifiers: 768, display: "⌘⇧V", panelCode: 9, panelModifiers: 768),
+            .conflict
+        )
+        XCTAssertEqual(
+            HotkeyPlan.pause(code: 35, modifiers: 768, display: "⌘⇧P", panelCode: 9, panelModifiers: 768),
+            .register(keyCode: 35, modifiers: 768)
+        )
+    }
+
+    func testPauseHotkeyDefaultsToUnset() {
+        let suite = "pause-hotkey-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = AppSettings(defaults: defaults)
+        XCTAssertFalse(settings.pauseHotkeyIsSet)
+        XCTAssertEqual(settings.pauseHotkeyDisplay, "")
+        XCTAssertEqual(settings.pauseHotkeyCode, 0)
+        XCTAssertEqual(settings.hotkeyDisplay, "⌘⇧V")
+        XCTAssertFalse(settings.isPaused)
+    }
+
     func testLogsDirectoryLivesInTheProject() throws {
         let directory = try AppPaths.logsDirectory()
         XCTAssertEqual(directory.lastPathComponent, "logs")

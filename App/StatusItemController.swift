@@ -29,6 +29,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         self.panel = panel
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         super.init()
+        model.settings.onPauseStateChange = { [weak self] in
+            guard let self else { return }
+            self.item.button?.image = self.icon()
+        }
         item.button?.image = icon()
         item.button?.image?.isTemplate = true
         let menu = NSMenu()
@@ -58,7 +62,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /**
      * 重建菜单：最近 10 条、打开主面板、暂停和设置。
      *
-     * 最近条目不显示图标。没有历史时放一条不可点的占位。
+     * 最近条目不显示图标。没有历史时放一条不可点的占位。已设置暂停热键时，把它写在暂停菜单项后面。
      *
      * @param menu 要填充的菜单
      */
@@ -81,7 +85,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let open = NSMenuItem(title: L10n.text("打开主面板", "Open panel"), action: #selector(openPanel), keyEquivalent: "")
         open.target = self
         menu.addItem(open)
-        let pauseTitle = model.settings.isPaused ? L10n.text("恢复记录", "Resume") : L10n.text("暂停记录", "Pause")
+        var pauseTitle = model.settings.isPaused ? L10n.text("恢复记录", "Resume") : L10n.text("暂停记录", "Pause")
+        if model.settings.pauseHotkeyIsSet {
+            pauseTitle += "  " + model.settings.pauseHotkeyDisplay
+        }
         let pause = NSMenuItem(title: pauseTitle, action: #selector(togglePause), keyEquivalent: "")
         pause.target = self
         menu.addItem(pause)
@@ -142,7 +149,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     /**
-     * 切换暂停。图标在下次打开菜单时重画。
+     * 切换暂停。图标由暂停状态回调立刻重画。
      */
     @objc private func togglePause() {
         model.togglePause()

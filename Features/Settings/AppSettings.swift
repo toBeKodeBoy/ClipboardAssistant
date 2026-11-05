@@ -149,6 +149,16 @@ final class AppSettings: ObservableObject {
     @Published var hotkeyModifiers: Int { didSet { persist(Keys.hotkeyModifiers, hotkeyModifiers) } }
     @Published var hotkeyDisplay: String { didSet { persist(Keys.hotkeyDisplay, hotkeyDisplay) } }
     @Published var hotkeyConflict: Bool = false
+    /** 暂停热键的虚拟键码。未设置时为 0，不注册。 */
+    @Published var pauseHotkeyCode: Int { didSet { persist(Keys.pauseHotkeyCode, pauseHotkeyCode) } }
+    /** 暂停热键的 Carbon 修饰键。未设置时为 0。 */
+    @Published var pauseHotkeyModifiers: Int { didSet { persist(Keys.pauseHotkeyModifiers, pauseHotkeyModifiers) } }
+    /** 暂停热键的显示文案。空字符串表示未设置。 */
+    @Published var pauseHotkeyDisplay: String { didSet { persist(Keys.pauseHotkeyDisplay, pauseHotkeyDisplay) } }
+    /** 暂停热键注册失败，或和打开主面板的组合相同时为 true。 */
+    @Published var pauseHotkeyConflict: Bool = false
+    /** 暂停状态变化时调用，由状态栏控制器重画图标。 */
+    var onPauseStateChange: (() -> Void)?
     @Published var panelWidth: Double { didSet { persist(Keys.panelWidth, panelWidth) } }
     @Published var panelHeight: Double { didSet { persist(Keys.panelHeight, panelHeight) } }
 
@@ -161,6 +171,15 @@ final class AppSettings: ObservableObject {
         if manuallyPaused { return true }
         if let pauseUntil, pauseUntil > Date() { return true }
         return false
+    }
+
+    /**
+     * 用户是否已经录制暂停热键。
+     *
+     * 显示文案为空时表示未设置，启动时不注册。
+     */
+    var pauseHotkeyIsSet: Bool {
+        !pauseHotkeyDisplay.isEmpty
     }
 
     /**
@@ -179,7 +198,7 @@ final class AppSettings: ObservableObject {
     /**
      * 从 UserDefaults 恢复偏好。
      *
-     * 第一次启动时写入默认排除应用。条数默认 500，天数默认 30，快捷键默认 ⌘⇧V。
+     * 第一次启动时写入默认排除应用。条数默认 500，天数默认 30。打开主面板默认 ⌘⇧V，暂停热键默认不设置。
      *
      * @param defaults 偏好存储，测试可传入独立套件
      */
@@ -200,6 +219,9 @@ final class AppSettings: ObservableObject {
         hotkeyCode = defaults.object(forKey: Keys.hotkeyCode) as? Int ?? Int(kVK_ANSI_V)
         hotkeyModifiers = defaults.object(forKey: Keys.hotkeyModifiers) as? Int ?? Int(cmdKey | shiftKey)
         hotkeyDisplay = defaults.string(forKey: Keys.hotkeyDisplay) ?? "⌘⇧V"
+        pauseHotkeyCode = defaults.object(forKey: Keys.pauseHotkeyCode) as? Int ?? 0
+        pauseHotkeyModifiers = defaults.object(forKey: Keys.pauseHotkeyModifiers) as? Int ?? 0
+        pauseHotkeyDisplay = defaults.string(forKey: Keys.pauseHotkeyDisplay) ?? ""
         panelWidth = defaults.object(forKey: Keys.panelWidth) as? Double ?? 640
         panelHeight = defaults.object(forKey: Keys.panelHeight) as? Double ?? 480
         if defaults.bool(forKey: Keys.didSeedExclusions) {
@@ -214,12 +236,16 @@ final class AppSettings: ObservableObject {
     /**
      * 定时暂停到期后清除暂停状态。
      *
-     * 手动暂停不受这里影响。
+     * 没有截止时间时，手动暂停保持不变。到期后通知菜单栏重画图标。
+     *
+     * @param notify 为 false 时只改状态，由调用方在最终状态确定后重画
      */
-    func refreshPause() {
-        if let pauseUntil, pauseUntil <= Date() {
-            self.pauseUntil = nil
-            manuallyPaused = false
+    func refreshPause(notify: Bool = true) {
+        guard let pauseUntil, pauseUntil <= Date() else { return }
+        self.pauseUntil = nil
+        manuallyPaused = false
+        if notify {
+            onPauseStateChange?()
         }
     }
 
@@ -275,6 +301,9 @@ final class AppSettings: ObservableObject {
         static let hotkeyCode = "hotkeyCode"
         static let hotkeyModifiers = "hotkeyModifiers"
         static let hotkeyDisplay = "hotkeyDisplay"
+        static let pauseHotkeyCode = "pauseHotkeyCode"
+        static let pauseHotkeyModifiers = "pauseHotkeyModifiers"
+        static let pauseHotkeyDisplay = "pauseHotkeyDisplay"
         static let panelWidth = "panelWidth"
         static let panelHeight = "panelHeight"
     }

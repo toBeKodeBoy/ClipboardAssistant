@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var tab = SettingsTab.general
-    @State private var recording = false
+    @State private var recording: HotkeyRecording?
     @State private var confirmClear = false
     @State private var recordMessage: String?
 
@@ -59,11 +59,20 @@ struct SettingsView: View {
             }
                 }
             LabeledContent(L10n.text("打开主面板", "Open panel")) {
-                Button(recording ? L10n.text("请按下快捷键", "Press a shortcut") : model.settings.hotkeyDisplay) {
-                    recording = true
+                Button(recording == .panel ? L10n.text("请按下快捷键", "Press a shortcut") : model.settings.hotkeyDisplay) {
+                    recording = .panel
                 }
                 .foregroundStyle(model.settings.hotkeyConflict ? Color.red : Color.primary)
             }
+            PauseHotkeySetting(
+                settings: model.settings,
+                recording: $recording,
+                onClear: {
+                    recording = nil
+                    recordMessage = nil
+                    model.clearPauseHotkey()
+                }
+            )
             if let recordMessage {
                 Text(recordMessage).font(.caption).foregroundStyle(.red)
             }
@@ -83,6 +92,7 @@ struct SettingsView: View {
         Form {
             Toggle(L10n.text("忽略机密标记", "Ignore concealed items"), isOn: $model.settings.ignoreConcealed)
             Toggle(L10n.text("安全输入时仍记录", "Record during secure input"), isOn: $model.settings.recordDuringSecureInput)
+            RecordingStatusLabel(settings: model.settings)
             Picker(L10n.text("暂停时长", "Pause duration"), selection: $model.settings.pauseChoice) {
                 ForEach(PauseChoice.allCases) { Text($0.title).tag($0) }
             }
@@ -220,8 +230,67 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     }
 }
 
+/**
+ * 暂停热键的录制和清除。
+ *
+ * 直接观察偏好，清除后按钮文案会回到「未设置」。
+ */
+private struct PauseHotkeySetting: View {
+    @ObservedObject var settings: AppSettings
+    @Binding var recording: HotkeyRecording?
+    var onClear: () -> Void
+
+    var body: some View {
+        LabeledContent(L10n.text("暂停 / 恢复", "Pause or resume")) {
+            HStack {
+                Button(recording == .pause ? L10n.text("请按下快捷键", "Press a shortcut") : title) {
+                    recording = .pause
+                }
+                .foregroundStyle(settings.pauseHotkeyConflict ? Color.red : Color.primary)
+                if settings.pauseHotkeyIsSet {
+                    Button(L10n.text("清除", "Clear"), action: onClear)
+                }
+            }
+        }
+    }
+
+    /**
+     * 按钮上的快捷键文案。
+     *
+     * 还没录制时显示「未设置」。
+     */
+    private var title: String {
+        settings.pauseHotkeyIsSet ? settings.pauseHotkeyDisplay : L10n.text("未设置", "Not set")
+    }
+}
+
+/**
+ * 当前是否正在采集。
+ *
+ * 和菜单栏斜杠读同一套暂停状态。
+ */
+private struct RecordingStatusLabel: View {
+    @ObservedObject var settings: AppSettings
+
+    var body: some View {
+        LabeledContent(L10n.text("记录状态", "Recording")) {
+            Text(settings.isPaused ? L10n.text("已暂停", "Paused") : L10n.text("正在记录", "Recording"))
+        }
+    }
+}
+
+/**
+ * 设置页正在录制的热键。
+ */
+private enum HotkeyRecording {
+    /** 打开主面板。 */
+    case panel
+    /** 暂停或恢复采集。 */
+    case pause
+}
+
 private struct KeyRecorder: NSViewRepresentable {
-    @Binding var recording: Bool
+    @Binding var recording: HotkeyRecording?
     @Binding var message: String?
     var settings: AppSettings
     var onSave: () -> Void
@@ -245,14 +314,14 @@ private struct KeyRecorder: NSViewRepresentable {
     }
 
     final class Coordinator {
-        var recording: Bool
-        private var recordingBinding: Binding<Bool>
+        var recording: HotkeyRecording?
+        private var recordingBinding: Binding<HotkeyRecording?>
         private var message: Binding<String?>
         private let settings: AppSettings
         private let onSave: () -> Void
         private var monitor: Any?
 
-        init(recording: Binding<Bool>, message: Binding<String?>, settings: AppSettings, onSave: @escaping () -> Void) {
+        init(recording: Binding<HotkeyRecording?>, message: Binding<String?>, settings: AppSettings, onSave: @escaping () -> Void) {
             self.recording = recording.wrappedValue
             self.recordingBinding = recording
             self.message = message
@@ -263,18 +332,33 @@ private struct KeyRecorder: NSViewRepresentable {
         func install() {
             uninstall()
             monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                guard let self, self.recordingBinding.wrappedValue else { return event }
+                guard let self, self.recordingBinding.wrappedValue != nil else { return event }
                 let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
                 guard flags.contains(.command) || flags.contains(.control) || flags.contains(.option) else { return event }
                 if HotkeyCodec.isReserved(keyCode: event.keyCode, flags: flags) {
                     self.message.wrappedValue = L10n.text("不能使用 ⌘C / ⌘V / ⌘X / ⌘Q", "⌘C / ⌘V / ⌘X / ⌘Q are reserved")
                     return nil
                 }
+                let code = Int(event.keyCode)
+                let modifiers = Int(HotkeyCodec.carbonModifiers(from: flags))
+                if self.duplicatesOtherHotkey(code: code, modifiers: modifiers) {
+                    self.message.wrappedValue = L10n.text("不能和另一组快捷键相同", "This shortcut is already used")
+                    return nil
+                }
                 let display = HotkeyCodec.display(keyCode: event.keyCode, flags: flags, fallback: event.charactersIgnoringModifiers ?? "")
-                self.settings.hotkeyCode = Int(event.keyCode)
-                self.settings.hotkeyModifiers = Int(HotkeyCodec.carbonModifiers(from: flags))
-                self.settings.hotkeyDisplay = display
-                self.recordingBinding.wrappedValue = false
+                switch self.recordingBinding.wrappedValue {
+                case .panel:
+                    self.settings.hotkeyCode = code
+                    self.settings.hotkeyModifiers = modifiers
+                    self.settings.hotkeyDisplay = display
+                case .pause:
+                    self.settings.pauseHotkeyCode = code
+                    self.settings.pauseHotkeyModifiers = modifiers
+                    self.settings.pauseHotkeyDisplay = display
+                case nil:
+                    return event
+                }
+                self.recordingBinding.wrappedValue = nil
                 self.message.wrappedValue = nil
                 self.onSave()
                 return nil
@@ -285,6 +369,26 @@ private struct KeyRecorder: NSViewRepresentable {
             if let monitor {
                 NSEvent.removeMonitor(monitor)
                 self.monitor = nil
+            }
+        }
+
+        /**
+         * 判断这次录制是否和另一组热键相同。
+         *
+         * 暂停热键还没设置时，录制打开主面板不受它影响。
+         *
+         * @param code 虚拟键码
+         * @param modifiers Carbon 修饰键
+         * @return 两组相同时返回 true
+         */
+        private func duplicatesOtherHotkey(code: Int, modifiers: Int) -> Bool {
+            switch recordingBinding.wrappedValue {
+            case .panel:
+                return settings.pauseHotkeyIsSet && settings.pauseHotkeyCode == code && settings.pauseHotkeyModifiers == modifiers
+            case .pause:
+                return settings.hotkeyCode == code && settings.hotkeyModifiers == modifiers
+            case nil:
+                return false
             }
         }
     }

@@ -21,6 +21,16 @@ final class CaptureMonitor {
     private var timer: Timer?
     /** 上次观察到的 changeCount。 */
     private var lastChangeCount: Int
+    /** 这次轮询读取的剪切板。测试可换成独立剪切板。 */
+    var pasteboard: NSPasteboard
+    /** 读取前台应用。测试可换成固定结果。 */
+    var frontmost: () -> (bundleID: String?, name: String) = { FrontmostApp.current() }
+    /** 查询安全输入。测试可换成固定结果。 */
+    var secureInputEnabled: () -> Bool = { SecureInput.isEnabled() }
+    /** 当前时间。测试用来固定安全输入结束后的 1 秒窗口。 */
+    var clock: () -> Date = { Date() }
+    /** 一次轮询结束时调用，包括跳过和完成入库前的后台工作。 */
+    var onPollFinished: (() -> Void)?
     /** 本应用写回后 1 秒内的同哈希抑制。 */
     private var selfWrites = SelfWriteSuppression()
     /** 最近一次检测到安全输入的时间，用于结束后 1 秒内继续跳过。 */
@@ -36,6 +46,14 @@ final class CaptureMonitor {
      * @param pasteboard 要监视的剪切板，默认是系统通用剪切板
      */
     init(pasteboard: NSPasteboard = .general) {
+        self.pasteboard = pasteboard
+        lastChangeCount = pasteboard.changeCount
+    }
+
+    /**
+     * 把上次 changeCount 对齐到当前剪切板，下一次内容变化才会触发采集。
+     */
+    func syncChangeCount() {
         lastChangeCount = pasteboard.changeCount
     }
 
@@ -94,31 +112,40 @@ final class CaptureMonitor {
      * 暂停、本应用、安全输入及其结束后 1 秒、隐私门禁拒绝的内容都跳过。
      * 本应用刚写回的变化在建条目后丢弃，系统补上的类型也算同一次写入。
      */
-    private func poll() {
-        guard let settings else { return }
-        selfWrites.prune(now: Date())
-        settings.refreshPause()
-        if SecureInput.isEnabled() {
-            lastSecureInputAt = Date()
+    func poll() {
+        guard let settings else {
+            onPollFinished?()
+            return
         }
-        let pasteboard = NSPasteboard.general
+        let now = clock()
+        selfWrites.prune(now: now)
+        settings.refreshPause()
+        if secureInputEnabled() {
+            lastSecureInputAt = now
+        }
         let count = pasteboard.changeCount
-        guard count != lastChangeCount else { return }
+        guard count != lastChangeCount else {
+            onPollFinished?()
+            return
+        }
         lastChangeCount = count
-        let front = FrontmostApp.current()
-        let secureNow = SecureInput.isEnabled()
+        let front = frontmost()
+        let secureNow = secureInputEnabled()
         let secureSticky = !settings.recordDuringSecureInput
-            && lastSecureInputAt.map { Date().timeIntervalSince($0) < 1 } == true
+            && lastSecureInputAt.map { now.timeIntervalSince($0) < 1 } == true
         if settings.isPaused {
             AppLog.capture.info("skip paused")
+            onPollFinished?()
             return
         }
         if front.bundleID == Bundle.main.bundleIdentifier {
             AppLog.capture.info("skip self")
+            onPollFinished?()
             return
         }
         if (secureNow || secureSticky) && !settings.recordDuringSecureInput {
             AppLog.capture.info("skip secure-input")
+            onPollFinished?()
             return
         }
         let snapshot = PasteboardReader.snapshot(pasteboard)
@@ -135,9 +162,13 @@ final class CaptureMonitor {
         )
         guard PrivacyGate.allowsCapture(decision) else {
             logSkipped(snapshot, frontBundleID: front.bundleID, settings: settings)
+            onPollFinished?()
             return
         }
-        queue.async {
+        queue.async { [weak self] in
+            defer {
+                DispatchQueue.main.async { self?.onPollFinished?() }
+            }
             guard let captured = CaptureBuilder.build(snapshot) else {
                 AppLog.capture.info("skip empty")
                 return
@@ -150,7 +181,7 @@ final class CaptureMonitor {
             let sourceName = snapshot.hasRemoteMarker ? L10n.text("通用剪贴板", "Universal Clipboard") : front.name
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                if self.selfWrites.shouldIgnore(changeCount: count, hash: captured.contentHash, digests: digests, now: Date()) {
+                if self.selfWrites.shouldIgnore(changeCount: count, hash: captured.contentHash, digests: digests, now: self.clock()) {
                     AppLog.capture.info("skip self-write")
                     return
                 }

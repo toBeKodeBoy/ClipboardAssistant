@@ -23,19 +23,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         guard !AppRuntime.isRunningTests else { return }
-        AppLog.store.info("launch")
         do {
-            let directory = try AppPaths.supportDirectory()
-            let store = try HistoryStore(directory: directory)
-            let settings = AppSettings()
-            let model = AppModel(store: store, settings: settings)
-            let panel = PanelController(model: model)
-            let status = StatusItemController(model: model, panel: panel)
-            model.start()
-            self.model = model
-            self.panel = panel
-            self.status = status
-            AppLog.store.info("launch ready")
+            try MainActor.assumeIsolated {
+                try self.launch(directory: try AppPaths.supportDirectory())
+            }
         } catch {
             AppLog.store.error("database open failed \(String(describing: error))")
             let alert = NSAlert()
@@ -43,6 +34,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             alert.informativeText = L10n.text("剪切板助手这次没有记录历史。", "Clipboard Assistant won't record history this launch.")
             alert.runModal()
         }
+    }
+
+    /**
+     * 打开历史库并装上面板和菜单栏。
+     *
+     * 测试传入临时目录和假热键，避免写到用户的历史并占用全局快捷键。
+     *
+     * @param directory 历史库目录
+     * @param settings 用户偏好
+     * @param hotkeys 热键登记，为空时使用系统热键
+     * @return 已启动的应用状态
+     * @throws 数据库打不开时抛出
+     */
+    @MainActor
+    @discardableResult
+    func launch(directory: URL, settings: AppSettings = AppSettings(), hotkeys: GlobalHotkeys? = nil) throws -> AppModel {
+        AppLog.store.info("launch")
+        let store = try HistoryStore(directory: directory)
+        let model = AppModel(store: store, settings: settings)
+        if let hotkeys {
+            model.hotkeys = hotkeys
+        }
+        let panel = PanelController(model: model)
+        let status = StatusItemController(model: model, panel: panel)
+        model.start()
+        self.model = model
+        self.panel = panel
+        self.status = status
+        AppLog.store.info("launch ready")
+        return model
     }
 }
 

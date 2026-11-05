@@ -240,7 +240,7 @@ struct HistoryPanelView: View {
     }
 
     @ViewBuilder
-    private func contextMenu(_ item: ClipboardItem) -> some View {
+    func contextMenu(_ item: ClipboardItem) -> some View {
         Button(L10n.text("复制", "Copy")) { model.paste(mode: .copyOnly, itemID: item.id) }
         Button(L10n.text("纯文本复制", "Copy as Plain Text")) { model.paste(mode: .plainCopy, itemID: item.id) }
         Button(item.pinned ? L10n.text("取消置顶", "Unpin") : L10n.text("置顶", "Pin")) { model.togglePin(id: item.id) }

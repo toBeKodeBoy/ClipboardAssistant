@@ -296,11 +296,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
      */
     private func ensurePermissionWindow() -> NSPanel {
         if let permissionWindow { return permissionWindow }
-        let openSettings = { [weak self] in
+        let openSettings: () -> Void = { [weak self] in
             self?.openAccessibilitySettings()
+            return
         }
-        let openPanel = { [weak self] in
+        let openPanel: () -> Void = { [weak self] in
             self?.openPanelFromGuide()
+            return
         }
         guideOpenSettings = openSettings
         guideOpenPanel = openPanel
@@ -322,7 +324,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         window.hidesOnDeactivate = false
         window.isReleasedWhenClosed = false
         window.isMovableByWindowBackground = true
-        host.sizingOptions = [.intrinsicContentSize, .preferredContentSize]
+        host.sizingOptions = [
+            NSHostingSizingOptions.intrinsicContentSize,
+            NSHostingSizingOptions.preferredContentSize
+        ]
         window.contentViewController = host
         permissionHost = host
         window.setContentSize(fittedGuideSize(host))

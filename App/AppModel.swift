@@ -36,8 +36,8 @@ final class AppModel: ObservableObject {
 
     var settings: AppSettings
     let store: HistoryStore
-    private let pasteService = PasteService()
-    private let monitor = CaptureMonitor()
+    let pasteService = PasteService()
+    let monitor = CaptureMonitor()
     private var targetBundleID: String?
     private var undoItem: ClipboardItem?
     private var undoRepresentations: [CapturedRepresentation] = []
@@ -484,6 +484,47 @@ final class AppModel: ObservableObject {
      */
     func thumbnailURL(for id: String) -> URL? {
         store.thumbnailURL(for: id)
+    }
+
+    /**
+     * 把一个应用加入排除列表。
+     *
+     * 已在列表中时不重复添加。没有 bundle id 时用文件名。
+     *
+     * @param url 应用包或可执行文件
+     */
+    func excludeApp(at url: URL) {
+        let bundle = Bundle(url: url)
+        let bundleID = bundle?.bundleIdentifier ?? url.lastPathComponent
+        let name = bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+            ?? bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String
+            ?? url.deletingPathExtension().lastPathComponent
+        if !settings.excludedApps.contains(where: { $0.bundleID == bundleID }) {
+            settings.excludedApps.append(ExcludedApp(bundleID: bundleID, name: name))
+        }
+    }
+
+    /**
+     * 生成关于页导出的诊断 JSON。
+     *
+     * 只含版本、权限、条数和数据库大小，不含剪切板正文。
+     *
+     * @return 格式化后的 JSON；序列化失败时返回 nil
+     */
+    func diagnosticsJSON() -> Data? {
+        let source = (try? store.fetchAll()) ?? items
+        let counts = HistoryCounts.tally(source)
+        let dbURL = store.directory.appendingPathComponent("history.db")
+        let bytes = (try? FileManager.default.attributesOfItem(atPath: dbURL.path)[.size] as? NSNumber)?.intValue ?? 0
+        let payload: [String: Any] = [
+            "version": "1.0.0",
+            "os": ProcessInfo.processInfo.operatingSystemVersionString,
+            "accessibilityTrusted": accessibilityTrusted,
+            "itemCount": counts.total,
+            "counts": counts.diagnosticCounts,
+            "databaseBytes": bytes
+        ]
+        return try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted])
     }
 
     /**

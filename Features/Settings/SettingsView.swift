@@ -16,11 +16,11 @@ struct SettingsView: View {
      *
      * @param initialTab 最初显示的分页
      */
-    init(initialTab: SettingsTab = .general) {
+    init(initialTab: SettingsTab = .general, recording: HotkeyRecording? = nil, recordMessage: String? = nil, confirmClear: Bool = false) {
         _tab = State(initialValue: initialTab)
-        _recording = State(initialValue: nil)
-        _confirmClear = State(initialValue: false)
-        _recordMessage = State(initialValue: nil)
+        _recording = State(initialValue: recording)
+        _confirmClear = State(initialValue: confirmClear)
+        _recordMessage = State(initialValue: recordMessage)
     }
 
     var body: some View {
@@ -61,17 +61,6 @@ struct SettingsView: View {
     private var general: some View {
         Form {
             Toggle(L10n.text("开机启动", "Launch at login"), isOn: $model.settings.launchAtLogin)
-                .onChange(of: model.settings.launchAtLogin) { _, enabled in
-                    do {
-                if enabled {
-                    try LoginItemController.setEnabled(true)
-                } else if LoginItemController.isEnabled {
-                    try LoginItemController.setEnabled(false)
-                }
-            } catch {
-                model.settings.launchAtLogin = false
-            }
-                }
             LabeledContent(L10n.text("打开主面板", "Open panel")) {
                 Button(recording == .panel ? L10n.text("请按下快捷键", "Press a shortcut") : model.settings.hotkeyDisplay) {
                     recording = .panel
@@ -196,30 +185,11 @@ struct SettingsView: View {
         panel.allowsMultipleSelection = false
         panel.directoryURL = URL(fileURLWithPath: "/Applications")
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        let bundle = Bundle(url: url)
-        let bundleID = bundle?.bundleIdentifier ?? url.lastPathComponent
-        let name = bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
-            ?? bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String
-            ?? url.deletingPathExtension().lastPathComponent
-        if !model.settings.excludedApps.contains(where: { $0.bundleID == bundleID }) {
-            model.settings.excludedApps.append(ExcludedApp(bundleID: bundleID, name: name))
-        }
+        model.excludeApp(at: url)
     }
 
     private func exportDiagnostics() {
-        let source = (try? model.store.fetchAll()) ?? model.items
-        let counts = HistoryCounts.tally(source)
-        let dbURL = model.store.directory.appendingPathComponent("history.db")
-        let bytes = (try? FileManager.default.attributesOfItem(atPath: dbURL.path)[.size] as? NSNumber)?.intValue ?? 0
-        let payload: [String: Any] = [
-            "version": "1.0.0",
-            "os": ProcessInfo.processInfo.operatingSystemVersionString,
-            "accessibilityTrusted": model.accessibilityTrusted,
-            "itemCount": counts.total,
-            "counts": counts.diagnosticCounts,
-            "databaseBytes": bytes
-        ]
-        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted]) else { return }
+        guard let data = model.diagnosticsJSON() else { return }
         let save = NSSavePanel()
         save.allowedContentTypes = [.json]
         save.nameFieldStringValue = "clipboard-diagnostics.json"
@@ -363,7 +333,8 @@ struct KeyRecorder: NSViewRepresentable {
          * @return 已消费时返回 nil
          */
         func receive(_ event: NSEvent) -> NSEvent? {
-            handle(keyCode: event.keyCode, flags: event.modifierFlags, characters: event.charactersIgnoringModifiers ?? "") ? nil : event
+            guard event.type == .keyDown else { return event }
+            return handle(keyCode: event.keyCode, flags: event.modifierFlags, characters: event.charactersIgnoringModifiers ?? "") ? nil : event
         }
 
         /**

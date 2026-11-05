@@ -15,7 +15,7 @@ import SwiftUI
 @MainActor
 final class PanelController: NSObject, NSWindowDelegate {
     private let model: AppModel
-    private let panel: NSPanel
+    let panel: NSPanel
     private var keyMonitor: Any?
     private var outsideMonitor: Any?
 
@@ -267,7 +267,7 @@ final class PanelController: NSObject, NSWindowDelegate {
      * @param event 按键事件
      * @return 已消费时返回 true，调用方应吞掉事件
      */
-    private func handle(_ event: NSEvent) -> Bool {
+    func handle(_ event: NSEvent) -> Bool {
         if ItemDeleteRouting.yieldsKeysToConfirmation(
             confirmClearAll: model.confirmClearAll,
             confirmPinnedDelete: model.confirmPinnedDelete
@@ -334,7 +334,7 @@ final class PanelController: NSObject, NSWindowDelegate {
      * @param flags 已去掉设备相关位的修饰键
      * @return 应交给搜索框时返回 true
      */
-    private func passesToSearchField(_ event: NSEvent, flags: NSEvent.ModifierFlags) -> Bool {
+    func passesToSearchField(_ event: NSEvent, flags: NSEvent.ModifierFlags) -> Bool {
         if flags.contains(.command) {
             let character = event.charactersIgnoringModifiers?.lowercased()
             return character == "z" || character == "a" || character == "c" || character == "v" || character == "x"

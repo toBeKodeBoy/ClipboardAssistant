@@ -41,6 +41,7 @@
 		A1000000000000000000020C /* SQLiteDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000019 /* SQLiteDatabase.swift */; };
 		A1000000000000000000020D /* HistoryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001A /* HistoryStoreTests.swift */; };
 		A1000000000000000000020E /* LogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001B /* LogicTests.swift */; };
+		A10000000000000000000221 /* CoverageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000021 /* CoverageTests.swift */; };
 		A1000000000000000000020F /* Assets.xcassets in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001C /* Assets.xcassets */; };
 		A10000000000000000000210 /* InfoPlist.strings in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001D /* InfoPlist.strings */; };
 		A10000000000000000000211 /* InfoPlist.strings in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001E /* InfoPlist.strings */; };
@@ -83,6 +84,7 @@
 		A10000000000000000000019 /* SQLiteDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteDatabase.swift; sourceTree = "<group>"; };
 		A1000000000000000000001A /* HistoryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryStoreTests.swift; sourceTree = "<group>"; };
 		A1000000000000000000001B /* LogicTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogicTests.swift; sourceTree = "<group>"; };
+		A10000000000000000000021 /* CoverageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverageTests.swift; sourceTree = "<group>"; };
 		A1000000000000000000001C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A1000000000000000000001D /* InfoPlist.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = InfoPlist.strings; sourceTree = "<group>"; };
 		A1000000000000000000001E /* InfoPlist.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = InfoPlist.strings; sourceTree = "<group>"; };
@@ -180,6 +182,7 @@
 			children = (
 				A1000000000000000000001A /* HistoryStoreTests.swift */,
 				A1000000000000000000001B /* LogicTests.swift */,
+				A10000000000000000000021 /* CoverageTests.swift */,
 			);
 			path = Tests;
 			sourceTree = "<group>";
@@ -334,6 +337,7 @@
 			files = (
 				A1000000000000000000020D /* HistoryStoreTests.swift */,
 				A1000000000000000000020E /* LogicTests.swift */,
+				A10000000000000000000221 /* CoverageTests.swift */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

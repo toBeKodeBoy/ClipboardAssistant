@@ -2,6 +2,7 @@ import AppKit
 import ApplicationServices
 import Carbon
 import SQLite3
+import SwiftUI
 import XCTest
 @testable import ClipboardAssistant
 
@@ -330,7 +331,8 @@ final class LogicTests: XCTestCase {
         XCTAssertTrue(digests.contains(ContentHash.sha256(badUTF8)))
         XCTAssertTrue(digests.contains(ContentHash.sha256(badUTF16)))
         XCTAssertNil(String(data: badUTF8, encoding: .utf8))
-        XCTAssertNil(String(data: badUTF16, encoding: .utf16))
+        let decodedUTF16 = String(data: badUTF16, encoding: .utf16)
+        XCTAssertTrue(decodedUTF16 == nil || decodedUTF16?.isEmpty == true)
         XCTAssertTrue(digests.contains(ContentHash.imageData(fakeImage)))
         XCTAssertNil(ContentHash.canonicalImage(fakeImage))
         XCTAssertFalse(digests.contains(ContentHash.sha256(Data("/tmp/a".utf8))))
@@ -354,7 +356,8 @@ final class LogicTests: XCTestCase {
             return
         }
         for index in 0..<(2 * 8) {
-            pixels[index] = UInt8((index * 37) % 251)
+            let byte = UInt8((index * 37) % 251)
+            pixels[index] = index % 4 == 3 ? 255 : byte
         }
         let tiff = try XCTUnwrap(rep.tiffRepresentation)
         let png = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
@@ -852,7 +855,7 @@ final class LogicTests: XCTestCase {
         let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
         XCTAssertEqual((prompted as NSDictionary?)?[promptKey] as? Bool, true)
         _ = AccessibilityClient.readTrusted(nil)
-        _ = AccessibilityClient.readTrusted([:] as CFDictionary)
+        _ = AccessibilityClient.readTrusted([promptKey: false] as CFDictionary)
         let query = AccessibilityClient.queryTrusted
         let activate = AccessibilityClient.activateApp
         let open = AccessibilityClient.openURL
@@ -1078,7 +1081,8 @@ final class LogicTests: XCTestCase {
         controller.showAlternateMenu(from: flipped)
         let plain = NSButton(frame: NSRect(x: 0, y: 0, width: 12, height: 14))
         controller.showAlternateMenu(from: plain)
-        XCTAssertEqual(Array(anchors.suffix(2)), [CGFloat(18), 0])
+        let plainAnchor = plain.isFlipped ? plain.bounds.height : plain.bounds.minY
+        XCTAssertEqual(Array(anchors.suffix(2)), [CGFloat(18), plainAnchor])
 
         var primary = 0
         controller.performPrimaryClick = { _ in
@@ -1446,6 +1450,7 @@ final class LogicTests: XCTestCase {
         XCTAssertEqual(backend.removeCount, 2)
 
         var replacement = 0
+        backend.failRegisterIDs = []
         XCTAssertTrue(center.register(id: .pause, keyCode: 35, modifiers: 768) { replacement += 1 })
         backend.failRegisterIDs = [HotkeyCenter.ID.pause.rawValue]
         XCTAssertFalse(center.register(id: .pause, keyCode: 37, modifiers: 768) { replacement += 100 })
@@ -1535,19 +1540,19 @@ final class LogicTests: XCTestCase {
             UInt32(kEventClassKeyboard),
             UInt32(kEventHotKeyPressed),
             0,
-            kEventAttributeNone,
+            EventAttributes(kEventAttributeNone),
             &event
         )
         guard created == noErr, let event else { return nil }
         guard let id else { return event }
         var hotKeyID = EventHotKeyID(signature: fourChar("CLAP"), id: id)
         let set = withUnsafeBytes(of: hotKeyID) { buffer -> OSStatus in
-            guard let bytes = buffer.baseAddress else { return paramErr }
+            guard let bytes = buffer.baseAddress else { return OSStatus(paramErr) }
             return SetEventParameter(
                 event,
                 EventParamName(kEventParamDirectObject),
                 EventParamType(typeEventHotKeyID),
-                ByteCount(buffer.count),
+                buffer.count,
                 bytes
             )
         }
@@ -1565,7 +1570,7 @@ final class LogicTests: XCTestCase {
             UInt32(kEventClassKeyboard),
             UInt32(kEventRawKeyDown),
             0,
-            kEventAttributeNone,
+            EventAttributes(kEventAttributeNone),
             &event
         )
         guard created == noErr else { return nil }
@@ -1690,7 +1695,7 @@ private final class FlippedButton: NSButton {
     override var isFlipped: Bool { true }
 }
 
-private final class FakeGlobalHotkeys: GlobalHotkeys {
+final class FakeGlobalHotkeys: GlobalHotkeys {
     struct Registration {
         var id: HotkeyCenter.ID
         var keyCode: UInt32

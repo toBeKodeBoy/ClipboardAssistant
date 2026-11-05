@@ -255,6 +255,9 @@ enum PasteboardWriter {
  */
 @MainActor
 final class PasteService {
+    /** 写回使用的剪切板。测试可换成独立剪切板，避免改到系统通用剪切板。 */
+    var pasteboard: NSPasteboard = .general
+
     /**
      * 执行一次复制或粘贴。
      *
@@ -293,7 +296,7 @@ final class PasteService {
             PasteboardWriter.writtenHash(for: item, mode: effective),
             PasteboardWriter.writtenEchoDigests(item: item, representations: representations, directory: directory, mode: effective)
         )
-        let count = PasteboardWriter.write(item: item, representations: representations, directory: directory, mode: effective)
+        let count = PasteboardWriter.write(item: item, representations: representations, directory: directory, mode: effective, pasteboard: pasteboard)
         finishSelfWrite(token, count)
         let modeName = effective.logName
         let kind = item.kind.rawValue

@@ -119,7 +119,23 @@ enum PauseChoice: String, CaseIterable, Identifiable {
  * @date 2026/10/27
  */
 final class AppSettings: ObservableObject {
-    @Published var launchAtLogin: Bool { didSet { persist(Keys.launchAtLogin, launchAtLogin) } }
+    @Published var launchAtLogin: Bool {
+        didSet {
+            persist(Keys.launchAtLogin, launchAtLogin)
+            guard launchAtLogin != oldValue else { return }
+            do {
+                if launchAtLogin {
+                    try LoginItemController.setEnabled(true)
+                } else if LoginItemController.isEnabled {
+                    try LoginItemController.setEnabled(false)
+                }
+            } catch {
+                if launchAtLogin {
+                    launchAtLogin = false
+                }
+            }
+        }
+    }
     /**
      * 外观。变更后立刻持久化，并通知已经打开的窗口。
      *

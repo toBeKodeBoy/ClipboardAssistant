@@ -39,11 +39,17 @@ enum AppPaths {
      * @return 日志目录
      * @throws 无法定位或创建目录时抛出
      */
-    static func logsDirectory(fileManager: FileManager = .default) throws -> URL {
-        let configured = Bundle.main.object(forInfoDictionaryKey: "ProjectLogsDirectory") as? String
+    static func logsDirectory(
+        fileManager: FileManager = .default,
+        configured: String? = nil,
+        useBundleConfiguration: Bool = true
+    ) throws -> URL {
+        let resolved = useBundleConfiguration
+            ? (configured ?? (Bundle.main.object(forInfoDictionaryKey: "ProjectLogsDirectory") as? String))
+            : configured
         let directory: URL
-        if let configured, !configured.isEmpty, !configured.contains("$(") {
-            directory = URL(fileURLWithPath: configured, isDirectory: true)
+        if let resolved, !resolved.isEmpty, !resolved.contains("$(") {
+            directory = URL(fileURLWithPath: resolved, isDirectory: true)
         } else {
             let root = try fileManager.url(
                 for: .libraryDirectory,

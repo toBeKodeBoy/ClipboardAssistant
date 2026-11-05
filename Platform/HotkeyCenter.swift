@@ -181,13 +181,13 @@ final class HotkeyCenter: GlobalHotkeys {
         guard let event else { return noErr }
         var hotKeyID = EventHotKeyID()
         let status = withUnsafeMutableBytes(of: &hotKeyID) { buffer -> OSStatus in
-            guard let bytes = buffer.baseAddress else { return paramErr }
+            guard let bytes = buffer.baseAddress else { return OSStatus(paramErr) }
             return GetEventParameter(
                 event,
                 EventParamName(kEventParamDirectObject),
                 EventParamType(typeEventHotKeyID),
                 nil,
-                ByteCount(buffer.count),
+                buffer.count,
                 nil,
                 bytes
             )

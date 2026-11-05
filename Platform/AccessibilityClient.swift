@@ -105,6 +105,11 @@ enum KeystrokeSender {
      *
      * @return 两个事件都创建成功时返回 true。这只表示事件已提交，不表示目标应用一定粘贴成功
      */
+    /** 投递按键事件。测试可换成空操作，避免把 ⌘V 发到当前前台应用。 */
+    static var postEvent: (CGEvent) -> Void = { event in
+        event.post(tap: .cghidEventTap)
+    }
+
     static func sendCommandV() -> Bool {
         guard AccessibilityClient.isTrusted() else { return false }
         let source = CGEventSource(stateID: .hidSystemState)
@@ -113,8 +118,8 @@ enum KeystrokeSender {
         let keyUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: false)
         keyDown?.flags = .maskCommand
         keyUp?.flags = .maskCommand
-        keyDown?.post(tap: .cghidEventTap)
-        keyUp?.post(tap: .cghidEventTap)
+        if let keyDown { postEvent(keyDown) }
+        if let keyUp { postEvent(keyUp) }
         return keyDown != nil && keyUp != nil
     }
 }

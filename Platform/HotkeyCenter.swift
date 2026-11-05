@@ -28,6 +28,8 @@ protocol HotkeyBackend: AnyObject {
     /**
      * 向系统注册一组热键。
      *
+     * 同一编号已有登记时，新组合被接受后才卸掉旧的。系统拒绝时旧组合保持有效。
+     *
      * @param keyCode 虚拟键码
      * @param modifiers Carbon 修饰键
      * @param id 热键编号
@@ -72,7 +74,8 @@ protocol GlobalHotkeys: AnyObject {
  * 全局快捷键。
  *
  * 用 Carbon RegisterEventHotKey 同时注册打开面板和暂停两组热键，不申请输入监控。
- * 重新注册某一组时只注销这一组。单独的 ⌘C、⌘V、⌘X、⌘Q 由 HotkeyCodec 拒绝，不在这里判断。
+ * 重新注册某一组时先登记新组合，成功后再卸掉这一组的旧热键。登记失败时保留原来的登记和回调。
+ * 单独的 ⌘C、⌘V、⌘X、⌘Q 由 HotkeyCodec 拒绝，不在这里判断。
  *
  * @author toBeKodeBoy
  * @date 2026/10/27
@@ -112,7 +115,7 @@ final class HotkeyCenter: GlobalHotkeys {
     /**
      * 注册一组全局热键。
      *
-     * 会先注销同一编号的旧热键。系统拒绝时返回 false，这一组不再有效，另一组保持原样。
+     * 先向系统登记新组合。成功后再换成新回调。系统拒绝时保留这一组原来的登记和回调，另一组不受影响。
      *
      * @param id 热键编号
      * @param keyCode 虚拟键码
@@ -121,7 +124,6 @@ final class HotkeyCenter: GlobalHotkeys {
      * @return 注册成功时返回 true
      */
     func register(id: ID, keyCode: UInt32, modifiers: UInt32, onPressed: @escaping () -> Void) -> Bool {
-        unregister(id: id)
         if !handlerInstalled {
             guard backend.installHandler(for: self) else { return false }
             handlerInstalled = true
@@ -178,15 +180,18 @@ final class HotkeyCenter: GlobalHotkeys {
     func accept(event: EventRef?) -> OSStatus {
         guard let event else { return noErr }
         var hotKeyID = EventHotKeyID()
-        let status = GetEventParameter(
-            event,
-            EventParamName(kEventParamDirectObject),
-            EventParamType(typeEventHotKeyID),
-            nil,
-            MemoryLayout<EventHotKeyID>.size,
-            nil,
-            &hotKeyID
-        )
+        let status = withUnsafeMutableBytes(of: &hotKeyID) { buffer -> OSStatus in
+            guard let bytes = buffer.baseAddress else { return paramErr }
+            return GetEventParameter(
+                event,
+                EventParamName(kEventParamDirectObject),
+                EventParamType(typeEventHotKeyID),
+                nil,
+                ByteCount(buffer.count),
+                nil,
+                bytes
+            )
+        }
         guard status == noErr else { return noErr }
         fire(id: hotKeyID.id)
         return noErr
@@ -223,7 +228,21 @@ final class CarbonHotkeyBackend: HotkeyBackend {
     /** 当前安装的事件处理。 */
     private var handler: EventHandlerRef?
     /** 已向系统登记的热键。 */
-    private var keys: [UInt32: EventHotKeyRef] = [:]
+    private var keys: [UInt32: RegisteredHotKey] = [:]
+
+    /**
+     * 一组已经交给系统的热键。
+     *
+     * 保留键码和修饰键，相同组合再次登记时不必向系统再注册一次。
+     */
+    private struct RegisteredHotKey {
+        /** 虚拟键码。 */
+        var keyCode: UInt32
+        /** Carbon 修饰键。 */
+        var modifiers: UInt32
+        /** 系统返回的热键引用。 */
+        var hotKey: EventHotKeyRef
+    }
 
     func installHandler(for center: HotkeyCenter) -> Bool {
         guard handler == nil else { return true }
@@ -241,20 +260,23 @@ final class CarbonHotkeyBackend: HotkeyBackend {
     }
 
     func register(keyCode: UInt32, modifiers: UInt32, id: UInt32) -> Bool {
-        if let existing = keys.removeValue(forKey: id) {
-            UnregisterEventHotKey(existing)
+        if let existing = keys[id], existing.keyCode == keyCode, existing.modifiers == modifiers {
+            return true
         }
         var hotKey: EventHotKeyRef?
         let hotKeyID = EventHotKeyID(signature: fourChar("CLAP"), id: id)
         let status = RegisterEventHotKey(keyCode, modifiers, hotKeyID, GetApplicationEventTarget(), 0, &hotKey)
         guard status == noErr, let hotKey else { return false }
-        keys[id] = hotKey
+        if let existing = keys.removeValue(forKey: id) {
+            UnregisterEventHotKey(existing.hotKey)
+        }
+        keys[id] = RegisteredHotKey(keyCode: keyCode, modifiers: modifiers, hotKey: hotKey)
         return true
     }
 
     func unregister(id: UInt32) {
-        guard let hotKey = keys.removeValue(forKey: id) else { return }
-        UnregisterEventHotKey(hotKey)
+        guard let existing = keys.removeValue(forKey: id) else { return }
+        UnregisterEventHotKey(existing.hotKey)
     }
 }
 

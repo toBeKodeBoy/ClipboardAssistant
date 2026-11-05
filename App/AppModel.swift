@@ -330,7 +330,8 @@ final class AppModel: ObservableObject {
     /**
      * 按当前偏好重新注册全局热键。
      *
-     * 打开主面板始终注册。暂停热键没有文案时注销；和主面板组合相同，或系统拒绝时标红且不生效。
+     * 打开主面板始终注册。暂停热键没有文案时注销；和主面板组合相同，或系统拒绝时标红。
+     * 系统拒绝时这一组原来的热键保持有效。
      */
     func applyHotkey() {
         let panelOK = hotkeys.register(

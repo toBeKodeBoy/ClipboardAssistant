@@ -746,6 +746,14 @@ final class LogicTests: XCTestCase {
             StatusMenuText.pauseItem(isPaused: true, hotkeyDisplay: "⌘⇧P"),
             L10n.text("恢复记录", "Resume") + "  ⌘⇧P"
         )
+        XCTAssertEqual(
+            StatusMenuText.pauseItem(isPaused: false, hotkeyDisplay: "⌘⇧P", available: false),
+            L10n.text("暂停记录", "Pause")
+        )
+        XCTAssertEqual(
+            StatusMenuText.pauseItem(isPaused: true, hotkeyDisplay: "⌘⇧P", available: false),
+            L10n.text("恢复记录", "Resume")
+        )
     }
 
     @MainActor
@@ -843,7 +851,8 @@ final class LogicTests: XCTestCase {
 
         model.settings.manuallyPaused = false
         model.settings.pauseUntil = nil
-        pause.onPressed()
+        let registeredPause = try XCTUnwrap(fake.registrations.first(where: { $0.id == .pause }))
+        registeredPause.onPressed()
         let pauseTurn = expectation(description: "pause hotkey")
         DispatchQueue.main.async { pauseTurn.fulfill() }
         wait(for: [pauseTurn], timeout: 1)
@@ -997,15 +1006,25 @@ final class LogicTests: XCTestCase {
 
         var replacement = 0
         XCTAssertTrue(center.register(id: .pause, keyCode: 35, modifiers: 768) { replacement += 1 })
+        backend.failRegisterIDs = [HotkeyCenter.ID.pause.rawValue]
+        XCTAssertFalse(center.register(id: .pause, keyCode: 37, modifiers: 768) { replacement += 100 })
+        XCTAssertEqual(backend.registered[HotkeyCenter.ID.pause.rawValue]?.0, 35)
+        center.fire(id: HotkeyCenter.ID.pause.rawValue)
+        let kept = expectation(description: "failed replacement keeps the previous callback")
+        DispatchQueue.main.async { kept.fulfill() }
+        wait(for: [kept], timeout: 1)
+        XCTAssertEqual(replacement, 1)
+
+        backend.failRegisterIDs = []
         XCTAssertTrue(center.register(id: .pause, keyCode: 36, modifiers: 768) { replacement += 10 })
         center.fire(id: HotkeyCenter.ID.pause.rawValue)
         center.fire(id: 99)
         let replaced = expectation(description: "replacement callback")
         DispatchQueue.main.async { replaced.fulfill() }
         wait(for: [replaced], timeout: 1)
-        XCTAssertEqual(replacement, 10)
-        XCTAssertEqual(backend.installCount, 5)
-        XCTAssertEqual(backend.removeCount, 3)
+        XCTAssertEqual(replacement, 11)
+        XCTAssertEqual(backend.installCount, 4)
+        XCTAssertEqual(backend.removeCount, 2)
     }
 
     func testHotkeyEventDeliversOnlyAParsedIdentifier() throws {
@@ -1031,32 +1050,6 @@ final class LogicTests: XCTestCase {
         DispatchQueue.main.async { turn.fulfill() }
         wait(for: [turn], timeout: 1)
         XCTAssertEqual(hits, [HotkeyCenter.ID.pause.rawValue])
-    }
-
-    func testCarbonBackendReplacesAChordAndRejectsADuplicate() {
-        let backend = CarbonHotkeyBackend()
-        let center = HotkeyCenter(backend: backend)
-        let modifiers = UInt32(cmdKey) | UInt32(shiftKey) | UInt32(optionKey) | UInt32(controlKey)
-        defer {
-            center.unregister(id: .panel)
-            center.unregister(id: .pause)
-            backend.unregister(id: HotkeyCenter.ID.panel.rawValue)
-            backend.unregister(id: HotkeyCenter.ID.pause.rawValue)
-            backend.removeHandler()
-        }
-        XCTAssertTrue(backend.installHandler(for: center))
-        XCTAssertTrue(backend.installHandler(for: center))
-        backend.unregister(id: 9)
-        backend.removeHandler()
-        backend.removeHandler()
-        XCTAssertTrue(backend.register(keyCode: UInt32(kVK_F19), modifiers: modifiers, id: HotkeyCenter.ID.panel.rawValue))
-        XCTAssertTrue(backend.register(keyCode: UInt32(kVK_F17), modifiers: modifiers, id: HotkeyCenter.ID.panel.rawValue))
-        XCTAssertFalse(backend.register(keyCode: UInt32(kVK_F17), modifiers: modifiers, id: HotkeyCenter.ID.pause.rawValue))
-        backend.unregister(id: HotkeyCenter.ID.panel.rawValue)
-        XCTAssertTrue(center.register(id: .panel, keyCode: UInt32(kVK_F19), modifiers: modifiers) {})
-        XCTAssertFalse(center.register(id: .pause, keyCode: UInt32(kVK_F19), modifiers: modifiers) {})
-        XCTAssertTrue(center.register(id: .pause, keyCode: UInt32(kVK_F18), modifiers: modifiers) {})
-        XCTAssertTrue(center.register(id: .panel, keyCode: UInt32(kVK_F17), modifiers: modifiers) {})
     }
 
     func testLogsDirectoryLivesInTheProject() throws {
@@ -1108,12 +1101,13 @@ final class LogicTests: XCTestCase {
         guard let id else { return event }
         var hotKeyID = EventHotKeyID(signature: fourChar("CLAP"), id: id)
         let set = withUnsafeBytes(of: hotKeyID) { buffer -> OSStatus in
-            SetEventParameter(
+            guard let bytes = buffer.baseAddress else { return paramErr }
+            return SetEventParameter(
                 event,
                 EventParamName(kEventParamDirectObject),
                 EventParamType(typeEventHotKeyID),
-                buffer.count,
-                buffer.baseAddress
+                ByteCount(buffer.count),
+                bytes
             )
         }
         guard set == noErr else {

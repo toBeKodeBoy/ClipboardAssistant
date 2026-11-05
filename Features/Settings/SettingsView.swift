@@ -301,9 +301,7 @@ struct KeyRecorder: NSViewRepresentable {
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {
-        context.coordinator.recording = recording
-    }
+    func updateNSView(_ nsView: NSView, context: Context) {}
 
     static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
         coordinator.uninstall()
@@ -314,7 +312,6 @@ struct KeyRecorder: NSViewRepresentable {
     }
 
     final class Coordinator {
-        var recording: HotkeyRecording?
         private var recordingBinding: Binding<HotkeyRecording?>
         private var message: Binding<String?>
         private let settings: AppSettings
@@ -322,7 +319,6 @@ struct KeyRecorder: NSViewRepresentable {
         private var monitor: Any?
 
         init(recording: Binding<HotkeyRecording?>, message: Binding<String?>, settings: AppSettings, onSave: @escaping () -> Void) {
-            self.recording = recording.wrappedValue
             self.recordingBinding = recording
             self.message = message
             self.settings = settings

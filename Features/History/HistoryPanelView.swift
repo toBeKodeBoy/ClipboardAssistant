@@ -206,9 +206,7 @@ struct HistoryPanelView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                Button(L10n.text("打开系统设置", "Open System Settings")) {
-                    AccessibilityClient.openSettings()
-                }
+                Button(L10n.text("打开系统设置", "Open System Settings"), action: model.openAccessibilitySettings)
             }
         }
         .padding(32)

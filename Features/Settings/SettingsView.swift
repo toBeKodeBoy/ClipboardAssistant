@@ -4,10 +4,24 @@ import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
-    @State private var tab = SettingsTab.general
+    @State private var tab: SettingsTab
     @State private var recording: HotkeyRecording?
     @State private var confirmClear = false
     @State private var recordMessage: String?
+
+    /**
+     * 创建指定分页的设置窗口内容。
+     *
+     * 默认打开通用页。测试传入关于页，以便渲染辅助功能按钮。
+     *
+     * @param initialTab 最初显示的分页
+     */
+    init(initialTab: SettingsTab = .general) {
+        _tab = State(initialValue: initialTab)
+        _recording = State(initialValue: nil)
+        _confirmClear = State(initialValue: false)
+        _recordMessage = State(initialValue: nil)
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -170,10 +184,7 @@ struct SettingsView: View {
                     Text("\(counts.count(for: kind))")
                 }
             }
-            Button(L10n.text("打开系统设置", "Open System Settings")) {
-                _ = AccessibilityClient.isTrusted(prompt: true)
-                AccessibilityClient.openSettings()
-            }
+            Button(L10n.text("打开系统设置", "Open System Settings"), action: model.openAccessibilitySettings)
             Button(L10n.text("导出诊断", "Export diagnostics")) { exportDiagnostics() }
             Spacer()
         }

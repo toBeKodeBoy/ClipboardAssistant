@@ -27,6 +27,13 @@ final class AppModel: ObservableObject {
     @Published var confirmPinnedDelete = false
     @Published var accessibilityTrusted = false
 
+    /**
+     * 辅助功能授权状态发生变化时调用。
+     *
+     * 参数是新的授权状态。菜单栏用来切换圆点和点击去向。
+     */
+    var onAccessibilityChange: ((Bool) -> Void)?
+
     var settings: AppSettings
     let store: HistoryStore
     private let pasteService = PasteService()
@@ -402,9 +409,24 @@ final class AppModel: ObservableObject {
 
     /**
      * 刷新辅助功能授权状态，供菜单栏圆点和空状态提示使用。
+     *
+     * 状态有变化时通知 onAccessibilityChange。没有变化时不重复通知。
      */
     func refreshAccessibility() {
-        accessibilityTrusted = AccessibilityClient.isTrusted()
+        let trusted = AccessibilityClient.isTrusted()
+        guard trusted != accessibilityTrusted else { return }
+        accessibilityTrusted = trusted
+        onAccessibilityChange?(trusted)
+    }
+
+    /**
+     * 弹出辅助功能授权提示，并打开系统设置里的对应页面。
+     *
+     * 权限说明、空历史和关于页共用这一处。返回后立刻刷新授权状态。
+     */
+    func openAccessibilitySettings() {
+        _ = AccessibilityClient.promptAndOpenSettings()
+        refreshAccessibility()
     }
 
     /**

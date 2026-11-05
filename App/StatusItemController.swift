@@ -85,10 +85,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let open = NSMenuItem(title: L10n.text("打开主面板", "Open panel"), action: #selector(openPanel), keyEquivalent: "")
         open.target = self
         menu.addItem(open)
-        var pauseTitle = model.settings.isPaused ? L10n.text("恢复记录", "Resume") : L10n.text("暂停记录", "Pause")
-        if model.settings.pauseHotkeyIsSet {
-            pauseTitle += "  " + model.settings.pauseHotkeyDisplay
-        }
+        let pauseTitle = StatusMenuText.pauseItem(isPaused: model.settings.isPaused, hotkeyDisplay: model.settings.pauseHotkeyDisplay)
         let pause = NSMenuItem(title: pauseTitle, action: #selector(togglePause), keyEquivalent: "")
         pause.target = self
         menu.addItem(pause)
@@ -182,5 +179,25 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         settingsWindow?.center()
         settingsWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+}
+
+/**
+ * 菜单栏里暂停项的标题。
+ *
+ * 已经录制暂停热键时，把组合接在标题后面。
+ */
+enum StatusMenuText {
+    /**
+     * 生成暂停或恢复菜单项的标题。
+     *
+     * @param isPaused 当前是否暂停
+     * @param hotkeyDisplay 暂停热键文案。空字符串表示未设置
+     * @return 菜单项标题
+     */
+    static func pauseItem(isPaused: Bool, hotkeyDisplay: String) -> String {
+        let title = isPaused ? L10n.text("恢复记录", "Resume") : L10n.text("暂停记录", "Pause")
+        guard !hotkeyDisplay.isEmpty else { return title }
+        return title + "  " + hotkeyDisplay
     }
 }

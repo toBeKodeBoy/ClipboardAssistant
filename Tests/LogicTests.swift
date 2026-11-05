@@ -657,9 +657,13 @@ final class LogicTests: XCTestCase {
         XCTAssertEqual(model.banner, AppModel.clearAllFailedMessage)
     }
 
-    func testPauseHotkeyStartsUnsetAndRejectsThePanelChord() {
+    func testPauseHotkeyPlanCoversSkipConflictAndBothSidesOfTheChord() {
+        XCTAssertEqual(fourChar(""), 0)
+        XCTAssertEqual(fourChar("C"), 0x43)
+        XCTAssertEqual(fourChar("CLAP"), 0x434C4150)
+        XCTAssertEqual(fourChar("CLAPX"), fourChar("CLAP"))
         XCTAssertEqual(
-            HotkeyPlan.pause(code: 0, modifiers: 0, display: "", panelCode: 9, panelModifiers: 768),
+            HotkeyPlan.pause(code: 9, modifiers: 768, display: "", panelCode: 9, panelModifiers: 768),
             .skip
         )
         XCTAssertEqual(
@@ -667,12 +671,22 @@ final class LogicTests: XCTestCase {
             .conflict
         )
         XCTAssertEqual(
+            HotkeyPlan.pause(code: 9, modifiers: 256, display: "⌘V", panelCode: 9, panelModifiers: 768),
+            .register(keyCode: 9, modifiers: 256)
+        )
+        XCTAssertEqual(
             HotkeyPlan.pause(code: 35, modifiers: 768, display: "⌘⇧P", panelCode: 9, panelModifiers: 768),
             .register(keyCode: 35, modifiers: 768)
         )
+        XCTAssertFalse(HotkeyPlan.duplicates(recording: .panel, code: 35, modifiers: 768, panelCode: 9, panelModifiers: 768, pauseCode: 0, pauseModifiers: 0, pauseIsSet: false))
+        XCTAssertFalse(HotkeyPlan.duplicates(recording: .panel, code: 35, modifiers: 768, panelCode: 9, panelModifiers: 768, pauseCode: 35, pauseModifiers: 256, pauseIsSet: true))
+        XCTAssertFalse(HotkeyPlan.duplicates(recording: .panel, code: 35, modifiers: 768, panelCode: 9, panelModifiers: 768, pauseCode: 36, pauseModifiers: 768, pauseIsSet: true))
+        XCTAssertTrue(HotkeyPlan.duplicates(recording: .panel, code: 35, modifiers: 768, panelCode: 9, panelModifiers: 768, pauseCode: 35, pauseModifiers: 768, pauseIsSet: true))
+        XCTAssertFalse(HotkeyPlan.duplicates(recording: .pause, code: 35, modifiers: 768, panelCode: 9, panelModifiers: 768, pauseCode: 35, pauseModifiers: 768, pauseIsSet: true))
+        XCTAssertTrue(HotkeyPlan.duplicates(recording: .pause, code: 9, modifiers: 768, panelCode: 9, panelModifiers: 768, pauseCode: 0, pauseModifiers: 0, pauseIsSet: false))
     }
 
-    func testPauseHotkeyDefaultsToUnset() {
+    func testPauseHotkeyDefaultsToUnsetAndRoundTripsWhenSaved() {
         let suite = "pause-hotkey-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defaults.removePersistentDomain(forName: suite)
@@ -681,8 +695,368 @@ final class LogicTests: XCTestCase {
         XCTAssertFalse(settings.pauseHotkeyIsSet)
         XCTAssertEqual(settings.pauseHotkeyDisplay, "")
         XCTAssertEqual(settings.pauseHotkeyCode, 0)
+        XCTAssertEqual(settings.pauseHotkeyModifiers, 0)
         XCTAssertEqual(settings.hotkeyDisplay, "⌘⇧V")
         XCTAssertFalse(settings.isPaused)
+        settings.pauseHotkeyCode = 35
+        settings.pauseHotkeyModifiers = 768
+        settings.pauseHotkeyDisplay = "⌘⇧P"
+        settings.pauseHotkeyConflict = true
+        let restored = AppSettings(defaults: defaults)
+        XCTAssertTrue(restored.pauseHotkeyIsSet)
+        XCTAssertEqual(restored.pauseHotkeyCode, 35)
+        XCTAssertEqual(restored.pauseHotkeyModifiers, 768)
+        XCTAssertEqual(restored.pauseHotkeyDisplay, "⌘⇧P")
+        XCTAssertFalse(restored.pauseHotkeyConflict)
+    }
+
+    func testRefreshPauseClearsOnlyExpiredDeadlines() {
+        let settings = AppSettings(defaults: UserDefaults(suiteName: "pause-refresh-\(UUID().uuidString)")!)
+        var redraws = 0
+        settings.onPauseStateChange = { redraws += 1 }
+        settings.manuallyPaused = true
+        settings.refreshPause()
+        XCTAssertTrue(settings.isPaused)
+        XCTAssertEqual(redraws, 0)
+        settings.pauseUntil = Date().addingTimeInterval(60)
+        settings.refreshPause()
+        XCTAssertTrue(settings.manuallyPaused)
+        XCTAssertEqual(redraws, 0)
+        settings.pauseUntil = Date().addingTimeInterval(-1)
+        settings.refreshPause(notify: false)
+        XCTAssertFalse(settings.isPaused)
+        XCTAssertNil(settings.pauseUntil)
+        XCTAssertFalse(settings.manuallyPaused)
+        XCTAssertEqual(redraws, 0)
+        settings.pauseUntil = Date().addingTimeInterval(-1)
+        settings.manuallyPaused = true
+        settings.refreshPause()
+        XCTAssertFalse(settings.isPaused)
+        XCTAssertEqual(redraws, 1)
+    }
+
+    func testStatusMenuPauseTitleIncludesTheShortcutWhenSet() {
+        XCTAssertEqual(StatusMenuText.pauseItem(isPaused: false, hotkeyDisplay: ""), L10n.text("暂停记录", "Pause"))
+        XCTAssertEqual(StatusMenuText.pauseItem(isPaused: true, hotkeyDisplay: ""), L10n.text("恢复记录", "Resume"))
+        XCTAssertEqual(
+            StatusMenuText.pauseItem(isPaused: false, hotkeyDisplay: "⌘⇧P"),
+            L10n.text("暂停记录", "Pause") + "  ⌘⇧P"
+        )
+        XCTAssertEqual(
+            StatusMenuText.pauseItem(isPaused: true, hotkeyDisplay: "⌘⇧P"),
+            L10n.text("恢复记录", "Resume") + "  ⌘⇧P"
+        )
+    }
+
+    @MainActor
+    func testTogglePauseUsesEachDurationAndRedrawsAfterTheFinalState() throws {
+        let harness = try deleteHarness()
+        defer { harness.cleanup() }
+        let settings = harness.model.settings
+        var redraws = 0
+        settings.onPauseStateChange = { redraws += 1 }
+        settings.pauseChoice = .manual
+        harness.model.togglePause()
+        XCTAssertTrue(settings.manuallyPaused)
+        XCTAssertTrue(settings.isPaused)
+        XCTAssertEqual(redraws, 1)
+        harness.model.togglePause()
+        XCTAssertFalse(settings.isPaused)
+        XCTAssertEqual(redraws, 2)
+
+        settings.pauseChoice = .quarterHour
+        let quarterStart = Date()
+        harness.model.togglePause()
+        let quarter = try XCTUnwrap(settings.pauseUntil)
+        XCTAssertEqual(quarter.timeIntervalSince(quarterStart), 15 * 60, accuracy: 5)
+        XCTAssertFalse(settings.manuallyPaused)
+        harness.model.togglePause()
+        XCTAssertFalse(settings.isPaused)
+
+        settings.pauseChoice = .oneHour
+        let hourStart = Date()
+        harness.model.togglePause()
+        let hour = try XCTUnwrap(settings.pauseUntil)
+        XCTAssertEqual(hour.timeIntervalSince(hourStart), 60 * 60, accuracy: 5)
+        settings.pauseUntil = Date().addingTimeInterval(120)
+        harness.model.togglePause()
+        XCTAssertNil(settings.pauseUntil)
+        XCTAssertFalse(settings.isPaused)
+
+        settings.pauseChoice = .manual
+        settings.pauseUntil = Date().addingTimeInterval(-1)
+        let redrawsBeforeExpiredToggle = redraws
+        harness.model.togglePause()
+        XCTAssertTrue(settings.manuallyPaused)
+        XCTAssertNil(settings.pauseUntil)
+        XCTAssertEqual(redraws, redrawsBeforeExpiredToggle + 1)
+    }
+
+    @MainActor
+    func testApplyHotkeyCoversSkipConflictFailureAndBothCallbacks() throws {
+        let harness = try deleteHarness()
+        defer { harness.cleanup() }
+        let model = harness.model
+        let fake = FakeGlobalHotkeys()
+        model.hotkeys = fake
+        model.applyHotkey()
+        XCTAssertEqual(fake.registrations.map(\.id), [.panel])
+        XCTAssertEqual(fake.unregistered, [.pause])
+        XCTAssertFalse(model.settings.hotkeyConflict)
+        XCTAssertFalse(model.settings.pauseHotkeyConflict)
+
+        model.settings.pauseHotkeyCode = model.settings.hotkeyCode
+        model.settings.pauseHotkeyModifiers = model.settings.hotkeyModifiers
+        model.settings.pauseHotkeyDisplay = model.settings.hotkeyDisplay
+        fake.unregistered.removeAll()
+        model.applyHotkey()
+        XCTAssertTrue(model.settings.pauseHotkeyConflict)
+        XCTAssertEqual(fake.registrations.map(\.id), [.panel])
+        XCTAssertEqual(fake.unregistered, [.pause])
+
+        model.settings.pauseHotkeyCode = 35
+        model.settings.pauseHotkeyModifiers = 768
+        model.settings.pauseHotkeyDisplay = "⌘⇧P"
+        fake.fail = [.pause]
+        model.applyHotkey()
+        XCTAssertTrue(model.settings.pauseHotkeyConflict)
+        XCTAssertFalse(fake.registrations.contains(where: { $0.id == .pause }))
+
+        fake.fail = [.panel]
+        model.applyHotkey()
+        XCTAssertTrue(model.settings.hotkeyConflict)
+        XCTAssertFalse(model.settings.pauseHotkeyConflict)
+        let pause = try XCTUnwrap(fake.registrations.first(where: { $0.id == .pause }))
+        XCTAssertEqual(pause.keyCode, 35)
+        XCTAssertEqual(pause.modifiers, 768)
+
+        fake.fail = []
+        model.applyHotkey()
+        var opened = false
+        model.onHotkey = { opened = true }
+        fake.registrations.first(where: { $0.id == .panel })?.onPressed()
+        XCTAssertFalse(opened)
+        let panelTurn = expectation(description: "panel hotkey")
+        DispatchQueue.main.async { panelTurn.fulfill() }
+        wait(for: [panelTurn], timeout: 1)
+        XCTAssertTrue(opened)
+
+        model.settings.manuallyPaused = false
+        model.settings.pauseUntil = nil
+        pause.onPressed()
+        let pauseTurn = expectation(description: "pause hotkey")
+        DispatchQueue.main.async { pauseTurn.fulfill() }
+        wait(for: [pauseTurn], timeout: 1)
+        XCTAssertTrue(model.settings.manuallyPaused)
+
+        model.clearPauseHotkey()
+        XCTAssertFalse(model.settings.pauseHotkeyIsSet)
+        XCTAssertEqual(model.settings.pauseHotkeyCode, 0)
+        XCTAssertEqual(model.settings.pauseHotkeyModifiers, 0)
+        XCTAssertFalse(model.settings.pauseHotkeyConflict)
+        XCTAssertFalse(fake.registrations.contains(where: { $0.id == .pause }))
+    }
+
+    @MainActor
+    func testKeyRecorderCoversReservedDuplicateAndSavedChords() throws {
+        let suite = "recorder-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = AppSettings(defaults: defaults)
+        var recording: HotkeyRecording?
+        var message: String?
+        var saves = 0
+        let coordinator = KeyRecorder(
+            recording: Binding(get: { recording }, set: { recording = $0 }),
+            message: Binding(get: { message }, set: { message = $0 }),
+            settings: settings,
+            onSave: { saves += 1 }
+        ).makeCoordinator()
+        let event = try XCTUnwrap(NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [.command, .shift],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "p",
+            charactersIgnoringModifiers: "p",
+            isARepeat: false,
+            keyCode: UInt16(kVK_ANSI_P)
+        ))
+        XCTAssertFalse(coordinator.handle(keyCode: UInt16(kVK_ANSI_P), flags: [.command, .shift], characters: "p"))
+        XCTAssertEqual(KeyRecorder.Coordinator.forward(nil, event: event)?.keyCode, event.keyCode)
+        XCTAssertEqual(coordinator.receive(event)?.keyCode, event.keyCode)
+        XCTAssertEqual(KeyRecorder.Coordinator.forward(coordinator, event: event)?.keyCode, event.keyCode)
+        let mouse = try XCTUnwrap(NSEvent.mouseEvent(
+            with: .leftMouseDown,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            eventNumber: 0,
+            clickCount: 1,
+            pressure: 0
+        ))
+        XCTAssertEqual(coordinator.receive(mouse)?.type, mouse.type)
+
+        recording = .pause
+        XCTAssertFalse(coordinator.handle(keyCode: UInt16(kVK_ANSI_P), flags: .shift, characters: "p"))
+        XCTAssertEqual(saves, 0)
+        XCTAssertTrue(coordinator.handle(keyCode: UInt16(kVK_ANSI_C), flags: .command, characters: "c"))
+        XCTAssertEqual(message, L10n.text("不能使用 ⌘C / ⌘V / ⌘X / ⌘Q", "⌘C / ⌘V / ⌘X / ⌘Q are reserved"))
+        XCTAssertEqual(recording, .pause)
+        XCTAssertEqual(saves, 0)
+
+        XCTAssertTrue(coordinator.handle(keyCode: UInt16(settings.hotkeyCode), flags: modifierFlags(forCarbon: settings.hotkeyModifiers), characters: "v"))
+        XCTAssertEqual(message, L10n.text("不能和另一组快捷键相同", "This shortcut is already used"))
+        XCTAssertEqual(saves, 0)
+
+        XCTAssertTrue(coordinator.handle(keyCode: UInt16(kVK_ANSI_B), flags: .control, characters: "b"))
+        XCTAssertEqual(saves, 1)
+        XCTAssertNil(recording)
+        recording = .pause
+        XCTAssertTrue(coordinator.handle(keyCode: UInt16(kVK_ANSI_K), flags: .option, characters: ""))
+        XCTAssertEqual(saves, 2)
+        XCTAssertNil(recording)
+        XCTAssertNil(message)
+        XCTAssertTrue(settings.pauseHotkeyIsSet)
+        XCTAssertEqual(settings.pauseHotkeyCode, Int(kVK_ANSI_K))
+        XCTAssertTrue(settings.pauseHotkeyDisplay.contains("K"))
+
+        recording = .panel
+        XCTAssertTrue(coordinator.handle(keyCode: UInt16(kVK_ANSI_K), flags: .option, characters: "k"))
+        XCTAssertEqual(message, L10n.text("不能和另一组快捷键相同", "This shortcut is already used"))
+        XCTAssertEqual(saves, 2)
+        settings.pauseHotkeyCode = Int(kVK_ANSI_J)
+        XCTAssertTrue(coordinator.handle(keyCode: UInt16(kVK_ANSI_L), flags: [.command, .shift], characters: "l"))
+        XCTAssertEqual(saves, 3)
+        XCTAssertNil(recording)
+        XCTAssertEqual(settings.hotkeyCode, Int(kVK_ANSI_L))
+        XCTAssertTrue(settings.hotkeyDisplay.contains("L"))
+
+        recording = .panel
+        settings.pauseHotkeyModifiers = settings.hotkeyModifiers + 1
+        XCTAssertTrue(coordinator.handle(keyCode: UInt16(settings.pauseHotkeyCode), flags: modifierFlags(forCarbon: settings.hotkeyModifiers), characters: "j"))
+        XCTAssertEqual(saves, 4)
+
+        coordinator.install()
+        coordinator.install()
+        coordinator.uninstall()
+        coordinator.uninstall()
+    }
+
+    @MainActor
+    func testPauseSettingViewsRenderRecordingAndPausedStates() {
+        let settings = AppSettings(defaults: UserDefaults(suiteName: "pause-views-\(UUID().uuidString)")!)
+        _ = RecordingStatusLabel(settings: settings).body
+        settings.manuallyPaused = true
+        _ = RecordingStatusLabel(settings: settings).body
+        var recording: HotkeyRecording?
+        let binding = Binding(get: { recording }, set: { recording = $0 })
+        _ = PauseHotkeySetting(settings: settings, recording: binding, onClear: {}).body
+        settings.pauseHotkeyDisplay = "⌘⇧P"
+        settings.pauseHotkeyConflict = true
+        recording = .pause
+        _ = PauseHotkeySetting(settings: settings, recording: binding, onClear: {}).body
+    }
+
+    func testHotkeyCenterKeepsTheOtherChordWhenOneRegistrationFails() {
+        let backend = RecordingHotkeyBackend()
+        let center = HotkeyCenter(backend: backend)
+        backend.failInstall = true
+        XCTAssertFalse(center.register(id: .panel, keyCode: 1, modifiers: 1) {})
+        XCTAssertEqual(backend.installCount, 1)
+        XCTAssertEqual(backend.removeCount, 0)
+
+        backend.failInstall = false
+        backend.failRegisterIDs = [HotkeyCenter.ID.panel.rawValue]
+        XCTAssertFalse(center.register(id: .panel, keyCode: 1, modifiers: 1) {})
+        XCTAssertEqual(backend.removeCount, 1)
+        XCTAssertEqual(backend.installCount, 2)
+
+        backend.failRegisterIDs = []
+        var panelHits = 0
+        XCTAssertTrue(center.register(id: .panel, keyCode: 9, modifiers: 768) { panelHits += 1 })
+        backend.failRegisterIDs = [HotkeyCenter.ID.pause.rawValue]
+        XCTAssertFalse(center.register(id: .pause, keyCode: 35, modifiers: 768) {})
+        XCTAssertEqual(backend.removeCount, 1)
+        XCTAssertEqual(backend.registered[HotkeyCenter.ID.panel.rawValue]?.0, 9)
+
+        center.unregister(id: .pause)
+        XCTAssertEqual(backend.removeCount, 1)
+        center.fire(id: HotkeyCenter.ID.panel.rawValue)
+        center.unregister(id: .panel)
+        let captured = expectation(description: "captured callback still runs")
+        DispatchQueue.main.async { captured.fulfill() }
+        wait(for: [captured], timeout: 1)
+        XCTAssertEqual(panelHits, 1)
+        XCTAssertEqual(backend.removeCount, 2)
+
+        var replacement = 0
+        XCTAssertTrue(center.register(id: .pause, keyCode: 35, modifiers: 768) { replacement += 1 })
+        XCTAssertTrue(center.register(id: .pause, keyCode: 36, modifiers: 768) { replacement += 10 })
+        center.fire(id: HotkeyCenter.ID.pause.rawValue)
+        center.fire(id: 99)
+        let replaced = expectation(description: "replacement callback")
+        DispatchQueue.main.async { replaced.fulfill() }
+        wait(for: [replaced], timeout: 1)
+        XCTAssertEqual(replacement, 10)
+        XCTAssertEqual(backend.installCount, 5)
+        XCTAssertEqual(backend.removeCount, 3)
+    }
+
+    func testHotkeyEventDeliversOnlyAParsedIdentifier() throws {
+        let backend = RecordingHotkeyBackend()
+        let center = HotkeyCenter(backend: backend)
+        var hits: [UInt32] = []
+        XCTAssertTrue(center.register(id: .pause, keyCode: 35, modifiers: 768) {
+            hits.append(HotkeyCenter.ID.pause.rawValue)
+        })
+        let pointer = Unmanaged.passUnretained(center).toOpaque()
+        XCTAssertEqual(center.accept(event: nil), noErr)
+        let bare = try XCTUnwrap(makeHotKeyEvent(id: nil))
+        defer { ReleaseEvent(bare) }
+        XCTAssertEqual(hotkeyCallback(nil, bare, nil), noErr)
+        XCTAssertEqual(HotkeyEvents.deliver(event: bare, userData: pointer), noErr)
+        let wrongKind = try XCTUnwrap(makeKeyDownEvent())
+        defer { ReleaseEvent(wrongKind) }
+        XCTAssertEqual(center.accept(event: wrongKind), noErr)
+        let parsed = try XCTUnwrap(makeHotKeyEvent(id: HotkeyCenter.ID.pause.rawValue))
+        defer { ReleaseEvent(parsed) }
+        XCTAssertEqual(hotkeyCallback(nil, parsed, pointer), noErr)
+        let turn = expectation(description: "parsed hotkey")
+        DispatchQueue.main.async { turn.fulfill() }
+        wait(for: [turn], timeout: 1)
+        XCTAssertEqual(hits, [HotkeyCenter.ID.pause.rawValue])
+    }
+
+    func testCarbonBackendReplacesAChordAndRejectsADuplicate() {
+        let backend = CarbonHotkeyBackend()
+        let center = HotkeyCenter(backend: backend)
+        let modifiers = UInt32(cmdKey) | UInt32(shiftKey) | UInt32(optionKey) | UInt32(controlKey)
+        defer {
+            center.unregister(id: .panel)
+            center.unregister(id: .pause)
+            backend.unregister(id: HotkeyCenter.ID.panel.rawValue)
+            backend.unregister(id: HotkeyCenter.ID.pause.rawValue)
+            backend.removeHandler()
+        }
+        XCTAssertTrue(backend.installHandler(for: center))
+        XCTAssertTrue(backend.installHandler(for: center))
+        backend.unregister(id: 9)
+        backend.removeHandler()
+        backend.removeHandler()
+        XCTAssertTrue(backend.register(keyCode: UInt32(kVK_F19), modifiers: modifiers, id: HotkeyCenter.ID.panel.rawValue))
+        XCTAssertTrue(backend.register(keyCode: UInt32(kVK_F17), modifiers: modifiers, id: HotkeyCenter.ID.panel.rawValue))
+        XCTAssertFalse(backend.register(keyCode: UInt32(kVK_F17), modifiers: modifiers, id: HotkeyCenter.ID.pause.rawValue))
+        backend.unregister(id: HotkeyCenter.ID.panel.rawValue)
+        XCTAssertTrue(center.register(id: .panel, keyCode: UInt32(kVK_F19), modifiers: modifiers) {})
+        XCTAssertFalse(center.register(id: .pause, keyCode: UInt32(kVK_F19), modifiers: modifiers) {})
+        XCTAssertTrue(center.register(id: .pause, keyCode: UInt32(kVK_F18), modifiers: modifiers) {})
+        XCTAssertTrue(center.register(id: .panel, keyCode: UInt32(kVK_F17), modifiers: modifiers) {})
     }
 
     func testLogsDirectoryLivesInTheProject() throws {
@@ -709,6 +1083,58 @@ final class LogicTests: XCTestCase {
         XCTAssertTrue(today.contains("2026-10-27 13:00:00.000 info store launch"))
         let next = try String(contentsOf: directory.appendingPathComponent("clipboard-2026-10-28.log"), encoding: .utf8)
         XCTAssertTrue(next.contains("error store database open failed"))
+    }
+
+    private func modifierFlags(forCarbon carbon: Int) -> NSEvent.ModifierFlags {
+        var flags: NSEvent.ModifierFlags = []
+        if carbon & Int(cmdKey) != 0 { flags.insert(.command) }
+        if carbon & Int(shiftKey) != 0 { flags.insert(.shift) }
+        if carbon & Int(optionKey) != 0 { flags.insert(.option) }
+        if carbon & Int(controlKey) != 0 { flags.insert(.control) }
+        return flags
+    }
+
+    private func makeHotKeyEvent(id: UInt32?) -> EventRef? {
+        var event: EventRef?
+        let created = CreateEvent(
+            nil,
+            UInt32(kEventClassKeyboard),
+            UInt32(kEventHotKeyPressed),
+            0,
+            kEventAttributeNone,
+            &event
+        )
+        guard created == noErr, let event else { return nil }
+        guard let id else { return event }
+        var hotKeyID = EventHotKeyID(signature: fourChar("CLAP"), id: id)
+        let set = withUnsafeBytes(of: hotKeyID) { buffer -> OSStatus in
+            SetEventParameter(
+                event,
+                EventParamName(kEventParamDirectObject),
+                EventParamType(typeEventHotKeyID),
+                buffer.count,
+                buffer.baseAddress
+            )
+        }
+        guard set == noErr else {
+            ReleaseEvent(event)
+            return nil
+        }
+        return event
+    }
+
+    private func makeKeyDownEvent() -> EventRef? {
+        var event: EventRef?
+        let created = CreateEvent(
+            nil,
+            UInt32(kEventClassKeyboard),
+            UInt32(kEventRawKeyDown),
+            0,
+            kEventAttributeNone,
+            &event
+        )
+        guard created == noErr else { return nil }
+        return event
     }
 
     private struct DeleteHarness {
@@ -805,5 +1231,57 @@ final class LogicTests: XCTestCase {
             imageHeight: kind == .image ? 10 : nil,
             payloadOversize: false
         )
+    }
+}
+
+private final class FakeGlobalHotkeys: GlobalHotkeys {
+    struct Registration {
+        var id: HotkeyCenter.ID
+        var keyCode: UInt32
+        var modifiers: UInt32
+        var onPressed: () -> Void
+    }
+
+    var registrations: [Registration] = []
+    var unregistered: [HotkeyCenter.ID] = []
+    var fail: Set<HotkeyCenter.ID> = []
+
+    func register(id: HotkeyCenter.ID, keyCode: UInt32, modifiers: UInt32, onPressed: @escaping () -> Void) -> Bool {
+        if fail.contains(id) { return false }
+        registrations.removeAll { $0.id == id }
+        registrations.append(Registration(id: id, keyCode: keyCode, modifiers: modifiers, onPressed: onPressed))
+        return true
+    }
+
+    func unregister(id: HotkeyCenter.ID) {
+        unregistered.append(id)
+        registrations.removeAll { $0.id == id }
+    }
+}
+
+private final class RecordingHotkeyBackend: HotkeyBackend {
+    var installCount = 0
+    var removeCount = 0
+    var failInstall = false
+    var failRegisterIDs: Set<UInt32> = []
+    var registered: [UInt32: (UInt32, UInt32)] = [:]
+
+    func installHandler(for center: HotkeyCenter) -> Bool {
+        installCount += 1
+        return !failInstall
+    }
+
+    func removeHandler() {
+        removeCount += 1
+    }
+
+    func register(keyCode: UInt32, modifiers: UInt32, id: UInt32) -> Bool {
+        if failRegisterIDs.contains(id) { return false }
+        registered[id] = (keyCode, modifiers)
+        return true
+    }
+
+    func unregister(id: UInt32) {
+        registered.removeValue(forKey: id)
     }
 }

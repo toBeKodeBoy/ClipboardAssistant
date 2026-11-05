@@ -3,6 +3,72 @@ import Carbon
 import Foundation
 
 /**
+ * 向系统登记或卸下全局热键。
+ *
+ * 测试可以换成不碰 Carbon 的实现，用来覆盖注册成功、失败和注销。
+ */
+protocol HotkeyBackend: AnyObject {
+    /**
+     * 安装热键事件处理。
+     *
+     * 已经安装时直接返回 true。
+     *
+     * @param center 收到按键后负责分发的热键中心
+     * @return 安装成功时返回 true
+     */
+    func installHandler(for center: HotkeyCenter) -> Bool
+
+    /**
+     * 卸掉热键事件处理。
+     *
+     * 尚未安装时什么也不做。
+     */
+    func removeHandler()
+
+    /**
+     * 向系统注册一组热键。
+     *
+     * @param keyCode 虚拟键码
+     * @param modifiers Carbon 修饰键
+     * @param id 热键编号
+     * @return 系统接受时返回 true
+     */
+    func register(keyCode: UInt32, modifiers: UInt32, id: UInt32) -> Bool
+
+    /**
+     * 注销一组热键。
+     *
+     * 这一组没有登记时什么也不做。
+     *
+     * @param id 热键编号
+     */
+    func unregister(id: UInt32)
+}
+
+/**
+ * 应用模型用来注册两组全局热键的接口。
+ */
+protocol GlobalHotkeys: AnyObject {
+    /**
+     * 注册一组热键。
+     *
+     * @param id 热键编号
+     * @param keyCode 虚拟键码
+     * @param modifiers Carbon 修饰键
+     * @param onPressed 按下后在主线程执行的回调
+     * @return 注册成功时返回 true
+     */
+    func register(id: HotkeyCenter.ID, keyCode: UInt32, modifiers: UInt32, onPressed: @escaping () -> Void) -> Bool
+
+    /**
+     * 注销一组热键。
+     *
+     * @param id 热键编号
+     */
+    func unregister(id: HotkeyCenter.ID)
+}
+
+/**
  * 全局快捷键。
  *
  * 用 Carbon RegisterEventHotKey 同时注册打开面板和暂停两组热键，不申请输入监控。
@@ -11,7 +77,7 @@ import Foundation
  * @author toBeKodeBoy
  * @date 2026/10/27
  */
-final class HotkeyCenter {
+final class HotkeyCenter: GlobalHotkeys {
     /**
      * 两组热键的编号。
      *
@@ -25,18 +91,23 @@ final class HotkeyCenter {
     }
 
     /** 进程内唯一的热键中心。 */
-    static let shared = HotkeyCenter()
+    static let shared = HotkeyCenter(backend: CarbonHotkeyBackend())
 
-    /** 已注册的热键和它的回调。 */
-    private struct Slot {
-        var hotKey: EventHotKeyRef
-        var onPressed: () -> Void
+    /** 按编号保存的回调。系统热键引用放在 backend 里。 */
+    private var callbacks: [UInt32: () -> Void] = [:]
+    /** 事件处理是否已经安装。 */
+    private var handlerInstalled = false
+    /** 实际向系统登记热键的对象。 */
+    private let backend: HotkeyBackend
+
+    /**
+     * 用指定的登记实现创建热键中心。
+     *
+     * @param backend 系统热键登记
+     */
+    init(backend: HotkeyBackend) {
+        self.backend = backend
     }
-
-    /** 按编号保存的热键。 */
-    private var slots: [UInt32: Slot] = [:]
-    /** 当前安装的事件处理。两组热键共用。 */
-    private var handler: EventHandlerRef?
 
     /**
      * 注册一组全局热键。
@@ -51,17 +122,18 @@ final class HotkeyCenter {
      */
     func register(id: ID, keyCode: UInt32, modifiers: UInt32, onPressed: @escaping () -> Void) -> Bool {
         unregister(id: id)
-        installHandlerIfNeeded()
-        let hotKeyID = EventHotKeyID(signature: fourChar("CLAP"), id: id.rawValue)
-        var hotKey: EventHotKeyRef?
-        let status = RegisterEventHotKey(keyCode, modifiers, hotKeyID, GetApplicationEventTarget(), 0, &hotKey)
-        guard status == noErr, let hotKey else {
-            if slots.isEmpty {
-                removeHandler()
+        if !handlerInstalled {
+            guard backend.installHandler(for: self) else { return false }
+            handlerInstalled = true
+        }
+        guard backend.register(keyCode: keyCode, modifiers: modifiers, id: id.rawValue) else {
+            if callbacks.isEmpty {
+                backend.removeHandler()
+                handlerInstalled = false
             }
             return false
         }
-        slots[id.rawValue] = Slot(hotKey: hotKey, onPressed: onPressed)
+        callbacks[id.rawValue] = onPressed
         return true
     }
 
@@ -73,63 +145,117 @@ final class HotkeyCenter {
      * @param id 热键编号
      */
     func unregister(id: ID) {
-        guard let slot = slots.removeValue(forKey: id.rawValue) else { return }
-        UnregisterEventHotKey(slot.hotKey)
-        if slots.isEmpty {
-            removeHandler()
+        guard callbacks.removeValue(forKey: id.rawValue) != nil else { return }
+        backend.unregister(id: id.rawValue)
+        if callbacks.isEmpty {
+            backend.removeHandler()
+            handlerInstalled = false
         }
     }
 
     /**
-     * 按事件里的热键编号调用对应回调。
+     * 按热键编号调用对应回调。
      *
-     * 回调先取出再派发，避免注销发生在派发之前时调用到已经换掉的热键。
+     * 回调先取出再派发。派发前注销只会让尚未取出的编号失效，已经取出的回调仍会执行。
      *
      * @param id RegisterEventHotKey 时写入的编号
      */
-    fileprivate func fire(id: UInt32) {
-        let action = slots[id]?.onPressed
+    func fire(id: UInt32) {
+        let action = callbacks[id]
         DispatchQueue.main.async {
             action?()
         }
     }
 
     /**
-     * 安装一次键盘热键事件处理。
+     * 从热键事件里读出编号并分发。
+     *
+     * 事件里没有热键编号时返回 noErr，不调用回调。
+     *
+     * @param event 系统发来的热键事件，缺失时忽略
+     * @return 始终返回 noErr，避免事件处理被移掉
      */
-    private func installHandlerIfNeeded() {
-        guard handler == nil else { return }
+    func accept(event: EventRef?) -> OSStatus {
+        guard let event else { return noErr }
+        var hotKeyID = EventHotKeyID()
+        let status = GetEventParameter(
+            event,
+            EventParamName(kEventParamDirectObject),
+            EventParamType(typeEventHotKeyID),
+            nil,
+            MemoryLayout<EventHotKeyID>.size,
+            nil,
+            &hotKeyID
+        )
+        guard status == noErr else { return noErr }
+        fire(id: hotKeyID.id)
+        return noErr
+    }
+}
+
+/**
+ * Carbon 热键事件进入应用后的转发。
+ *
+ * 没有用户数据时直接返回。有用户数据时交给对应的热键中心。
+ */
+enum HotkeyEvents {
+    /**
+     * 处理一次热键事件。
+     *
+     * @param event 系统事件
+     * @param userData 注册时写入的热键中心指针
+     * @return 始终返回 noErr
+     */
+    static func deliver(event: EventRef?, userData: UnsafeMutableRawPointer?) -> OSStatus {
+        guard let userData else { return noErr }
+        return Unmanaged<HotkeyCenter>.fromOpaque(userData).takeUnretainedValue().accept(event: event)
+    }
+}
+
+let hotkeyCallback: EventHandlerUPP = { _, event, userData in
+    HotkeyEvents.deliver(event: event, userData: userData)
+}
+
+/**
+ * 使用 Carbon 登记两组全局热键。
+ */
+final class CarbonHotkeyBackend: HotkeyBackend {
+    /** 当前安装的事件处理。 */
+    private var handler: EventHandlerRef?
+    /** 已向系统登记的热键。 */
+    private var keys: [UInt32: EventHotKeyRef] = [:]
+
+    func installHandler(for center: HotkeyCenter) -> Bool {
+        guard handler == nil else { return true }
         var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        let selfPointer = Unmanaged.passUnretained(self).toOpaque()
+        let selfPointer = Unmanaged.passUnretained(center).toOpaque()
         InstallEventHandler(GetApplicationEventTarget(), hotkeyCallback, 1, &eventType, selfPointer, &handler)
+        return handler != nil
     }
 
-    /**
-     * 卸掉键盘热键事件处理。
-     */
-    private func removeHandler() {
+    func removeHandler() {
         if let handler {
             RemoveEventHandler(handler)
             self.handler = nil
         }
     }
-}
 
-private let hotkeyCallback: EventHandlerUPP = { _, event, userData in
-    guard let userData else { return noErr }
-    var hotKeyID = EventHotKeyID()
-    let status = GetEventParameter(
-        event,
-        EventParamName(kEventParamDirectObject),
-        EventParamType(typeEventHotKeyID),
-        nil,
-        MemoryLayout<EventHotKeyID>.size,
-        nil,
-        &hotKeyID
-    )
-    guard status == noErr else { return noErr }
-    Unmanaged<HotkeyCenter>.fromOpaque(userData).takeUnretainedValue().fire(id: hotKeyID.id)
-    return noErr
+    func register(keyCode: UInt32, modifiers: UInt32, id: UInt32) -> Bool {
+        if let existing = keys.removeValue(forKey: id) {
+            UnregisterEventHotKey(existing)
+        }
+        var hotKey: EventHotKeyRef?
+        let hotKeyID = EventHotKeyID(signature: fourChar("CLAP"), id: id)
+        let status = RegisterEventHotKey(keyCode, modifiers, hotKeyID, GetApplicationEventTarget(), 0, &hotKey)
+        guard status == noErr, let hotKey else { return false }
+        keys[id] = hotKey
+        return true
+    }
+
+    func unregister(id: UInt32) {
+        guard let hotKey = keys.removeValue(forKey: id) else { return }
+        UnregisterEventHotKey(hotKey)
+    }
 }
 
 /**
@@ -196,6 +322,39 @@ enum HotkeyPlan {
             return .conflict
         }
         return .register(keyCode: UInt32(code), modifiers: UInt32(modifiers))
+    }
+
+    /**
+     * 判断正在录制的这一组是否和另一组使用了同一个组合。
+     *
+     * 暂停热键还没设置时，录制打开主面板不受它影响。
+     *
+     * @param recording 正在录制的热键
+     * @param code 这次按下的虚拟键码
+     * @param modifiers 这次按下的 Carbon 修饰键
+     * @param panelCode 打开主面板的虚拟键码
+     * @param panelModifiers 打开主面板的 Carbon 修饰键
+     * @param pauseCode 暂停热键的虚拟键码
+     * @param pauseModifiers 暂停热键的 Carbon 修饰键
+     * @param pauseIsSet 暂停热键是否已经录制
+     * @return 两组相同时返回 true
+     */
+    static func duplicates(
+        recording: HotkeyCenter.ID,
+        code: Int,
+        modifiers: Int,
+        panelCode: Int,
+        panelModifiers: Int,
+        pauseCode: Int,
+        pauseModifiers: Int,
+        pauseIsSet: Bool
+    ) -> Bool {
+        switch recording {
+        case .panel:
+            return pauseIsSet && pauseCode == code && pauseModifiers == modifiers
+        case .pause:
+            return panelCode == code && panelModifiers == modifiers
+        }
     }
 }
 

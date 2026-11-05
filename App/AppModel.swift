@@ -333,7 +333,7 @@ final class AppModel: ObservableObject {
      * 打开主面板始终注册。暂停热键没有文案时注销；和主面板组合相同，或系统拒绝时标红且不生效。
      */
     func applyHotkey() {
-        let panelOK = HotkeyCenter.shared.register(
+        let panelOK = hotkeys.register(
             id: .panel,
             keyCode: UInt32(settings.hotkeyCode),
             modifiers: UInt32(settings.hotkeyModifiers)
@@ -356,14 +356,14 @@ final class AppModel: ObservableObject {
             panelModifiers: settings.hotkeyModifiers
         ) {
         case .skip:
-            HotkeyCenter.shared.unregister(id: .pause)
+            hotkeys.unregister(id: .pause)
             settings.pauseHotkeyConflict = false
         case .conflict:
-            HotkeyCenter.shared.unregister(id: .pause)
+            hotkeys.unregister(id: .pause)
             settings.pauseHotkeyConflict = true
             AppLog.store.error("pause hotkey matches panel hotkey")
         case .register(let keyCode, let modifiers):
-            let pauseOK = HotkeyCenter.shared.register(id: .pause, keyCode: keyCode, modifiers: modifiers) { [weak self] in
+            let pauseOK = hotkeys.register(id: .pause, keyCode: keyCode, modifiers: modifiers) { [weak self] in
                 Task { @MainActor in
                     self?.togglePause()
                 }
@@ -390,6 +390,8 @@ final class AppModel: ObservableObject {
         applyHotkey()
     }
 
+    /** 全局热键登记。测试可换成不向系统注册的实现。 */
+    var hotkeys: GlobalHotkeys = HotkeyCenter.shared
     /** 全局热键按下时调用，由状态栏控制器打开或关闭面板。 */
     var onHotkey: (() -> Void)?
     /** 发送 ⌘V 之前调用，由面板控制器先关掉面板。 */

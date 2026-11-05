@@ -235,7 +235,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
  *
  * 直接观察偏好，清除后按钮文案会回到「未设置」。
  */
-private struct PauseHotkeySetting: View {
+struct PauseHotkeySetting: View {
     @ObservedObject var settings: AppSettings
     @Binding var recording: HotkeyRecording?
     var onClear: () -> Void
@@ -269,7 +269,7 @@ private struct PauseHotkeySetting: View {
  *
  * 和菜单栏斜杠读同一套暂停状态。
  */
-private struct RecordingStatusLabel: View {
+struct RecordingStatusLabel: View {
     @ObservedObject var settings: AppSettings
 
     var body: some View {
@@ -282,14 +282,14 @@ private struct RecordingStatusLabel: View {
 /**
  * 设置页正在录制的热键。
  */
-private enum HotkeyRecording {
+enum HotkeyRecording {
     /** 打开主面板。 */
     case panel
     /** 暂停或恢复采集。 */
     case pause
 }
 
-private struct KeyRecorder: NSViewRepresentable {
+struct KeyRecorder: NSViewRepresentable {
     @Binding var recording: HotkeyRecording?
     @Binding var message: String?
     var settings: AppSettings
@@ -332,63 +332,88 @@ private struct KeyRecorder: NSViewRepresentable {
         func install() {
             uninstall()
             monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                guard let self, self.recordingBinding.wrappedValue != nil else { return event }
-                let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-                guard flags.contains(.command) || flags.contains(.control) || flags.contains(.option) else { return event }
-                if HotkeyCodec.isReserved(keyCode: event.keyCode, flags: flags) {
-                    self.message.wrappedValue = L10n.text("不能使用 ⌘C / ⌘V / ⌘X / ⌘Q", "⌘C / ⌘V / ⌘X / ⌘Q are reserved")
-                    return nil
-                }
-                let code = Int(event.keyCode)
-                let modifiers = Int(HotkeyCodec.carbonModifiers(from: flags))
-                if self.duplicatesOtherHotkey(code: code, modifiers: modifiers) {
-                    self.message.wrappedValue = L10n.text("不能和另一组快捷键相同", "This shortcut is already used")
-                    return nil
-                }
-                let display = HotkeyCodec.display(keyCode: event.keyCode, flags: flags, fallback: event.charactersIgnoringModifiers ?? "")
-                switch self.recordingBinding.wrappedValue {
-                case .panel:
-                    self.settings.hotkeyCode = code
-                    self.settings.hotkeyModifiers = modifiers
-                    self.settings.hotkeyDisplay = display
-                case .pause:
-                    self.settings.pauseHotkeyCode = code
-                    self.settings.pauseHotkeyModifiers = modifiers
-                    self.settings.pauseHotkeyDisplay = display
-                case nil:
-                    return event
-                }
-                self.recordingBinding.wrappedValue = nil
-                self.message.wrappedValue = nil
-                self.onSave()
-                return nil
+                Coordinator.forward(self, event: event)
             }
+        }
+
+        /**
+         * 把按键交给录制器。
+         *
+         * 录制器已经释放时原样返回事件。
+         *
+         * @param coordinator 当前录制器，可能已经释放
+         * @param event 按键事件
+         * @return 已消费时返回 nil
+         */
+        static func forward(_ coordinator: Coordinator?, event: NSEvent) -> NSEvent? {
+            coordinator?.receive(event) ?? event
+        }
+
+        /**
+         * 处理一次按键，供事件监听和测试调用。
+         *
+         * @param event 按键事件
+         * @return 已消费时返回 nil
+         */
+        func receive(_ event: NSEvent) -> NSEvent? {
+            handle(keyCode: event.keyCode, flags: event.modifierFlags, characters: event.charactersIgnoringModifiers ?? "") ? nil : event
+        }
+
+        /**
+         * 按当前录制目标处理一次按键。
+         *
+         * 没有在录制、缺少修饰键时不消费。保留键和重复组合只提示，不保存。
+         *
+         * @param keyCode 虚拟键码
+         * @param flags 修饰键
+         * @param characters 事件给出的字符；为空时用键名
+         * @return 已消费时返回 true
+         */
+        func handle(keyCode: UInt16, flags: NSEvent.ModifierFlags, characters: String) -> Bool {
+            guard let target = recordingBinding.wrappedValue else { return false }
+            let modifiers = flags.intersection(.deviceIndependentFlagsMask)
+            guard modifiers.contains(.command) || modifiers.contains(.control) || modifiers.contains(.option) else { return false }
+            if HotkeyCodec.isReserved(keyCode: keyCode, flags: modifiers) {
+                message.wrappedValue = L10n.text("不能使用 ⌘C / ⌘V / ⌘X / ⌘Q", "⌘C / ⌘V / ⌘X / ⌘Q are reserved")
+                return true
+            }
+            let code = Int(keyCode)
+            let carbon = Int(HotkeyCodec.carbonModifiers(from: modifiers))
+            let slot: HotkeyCenter.ID = target == .pause ? .pause : .panel
+            if HotkeyPlan.duplicates(
+                recording: slot,
+                code: code,
+                modifiers: carbon,
+                panelCode: settings.hotkeyCode,
+                panelModifiers: settings.hotkeyModifiers,
+                pauseCode: settings.pauseHotkeyCode,
+                pauseModifiers: settings.pauseHotkeyModifiers,
+                pauseIsSet: settings.pauseHotkeyIsSet
+            ) {
+                message.wrappedValue = L10n.text("不能和另一组快捷键相同", "This shortcut is already used")
+                return true
+            }
+            let display = HotkeyCodec.display(keyCode: keyCode, flags: modifiers, fallback: characters)
+            switch target {
+            case .panel:
+                settings.hotkeyCode = code
+                settings.hotkeyModifiers = carbon
+                settings.hotkeyDisplay = display
+            case .pause:
+                settings.pauseHotkeyCode = code
+                settings.pauseHotkeyModifiers = carbon
+                settings.pauseHotkeyDisplay = display
+            }
+            recordingBinding.wrappedValue = nil
+            message.wrappedValue = nil
+            onSave()
+            return true
         }
 
         func uninstall() {
             if let monitor {
                 NSEvent.removeMonitor(monitor)
                 self.monitor = nil
-            }
-        }
-
-        /**
-         * 判断这次录制是否和另一组热键相同。
-         *
-         * 暂停热键还没设置时，录制打开主面板不受它影响。
-         *
-         * @param code 虚拟键码
-         * @param modifiers Carbon 修饰键
-         * @return 两组相同时返回 true
-         */
-        private func duplicatesOtherHotkey(code: Int, modifiers: Int) -> Bool {
-            switch recordingBinding.wrappedValue {
-            case .panel:
-                return settings.pauseHotkeyIsSet && settings.pauseHotkeyCode == code && settings.pauseHotkeyModifiers == modifiers
-            case .pause:
-                return settings.hotkeyCode == code && settings.hotkeyModifiers == modifiers
-            case nil:
-                return false
             }
         }
     }

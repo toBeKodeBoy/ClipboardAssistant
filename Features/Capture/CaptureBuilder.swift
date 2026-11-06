@@ -391,7 +391,7 @@ enum CaptureBuilder {
         }
         let text = plain ?? ""
         if textOversize {
-            let end = text.index(text.startIndex, offsetBy: min(limits.previewBytes, text.count), limitedBy: text.endIndex) ?? text.endIndex
+            let end = text.index(text.startIndex, offsetBy: min(limits.previewBytes, text.count))
             return String(text[..<end])
         }
         return text

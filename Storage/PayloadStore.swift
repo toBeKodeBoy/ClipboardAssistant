@@ -42,7 +42,7 @@ final class PayloadStore {
     func write(itemID: String, uti: String, data: Data) throws -> String {
         let directory = root.appendingPathComponent("payloads").appendingPathComponent(itemID, isDirectory: true)
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        let name = uti.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? "data"
+        let name = Self.fileName(for: uti)
         let url = directory.appendingPathComponent(name)
         try data.write(to: url, options: .atomic)
         return "payloads/\(itemID)/\(name)"
@@ -94,6 +94,21 @@ final class PayloadStore {
      */
     func fileURL(relativePath: String) -> URL {
         root.appendingPathComponent(relativePath)
+    }
+
+    /**
+     * 把类型名编成文件名。编不出来或结果为空时用 data。
+     *
+     * @param uti 剪切板类型
+     * @param encode 编码函数。测试用来覆盖编不出来的情况
+     * @return 文件名
+     */
+    static func fileName(
+        for uti: String,
+        encode: (String) -> String? = { $0.addingPercentEncoding(withAllowedCharacters: .alphanumerics) }
+    ) -> String {
+        guard let encoded = encode(uti), !encoded.isEmpty else { return "data" }
+        return encoded
     }
 
     /**

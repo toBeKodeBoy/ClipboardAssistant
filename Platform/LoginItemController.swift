@@ -11,17 +11,24 @@ import ServiceManagement
  */
 enum LoginItemController {
     /**
+     * 真正向系统注册或取消。测试可换成会失败的实现，避免改本机登录项。
+     */
+    static var update: (Bool) throws -> Void = { enabled in
+        if enabled {
+            try SMAppService.mainApp.register()
+        } else {
+            try SMAppService.mainApp.unregister()
+        }
+    }
+
+    /**
      * 注册或取消开机启动。
      *
      * @param enabled true 为注册，false 为取消
      * @throws 系统拒绝注册或取消时抛出
      */
     static func setEnabled(_ enabled: Bool) throws {
-        if enabled {
-            try SMAppService.mainApp.register()
-        } else {
-            try SMAppService.mainApp.unregister()
-        }
+        try update(enabled)
     }
 
     /**

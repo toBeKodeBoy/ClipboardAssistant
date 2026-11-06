@@ -174,14 +174,14 @@ final class AppModel: ObservableObject {
             mode: mode,
             targetBundleID: targetBundleID,
             behavior: settings.pasteBehavior,
-            beginSelfWrite: { [weak self] hash, digests in
-                self?.monitor.beginSelfWrite(hash: hash, digests: digests) ?? 0
+            beginSelfWrite: { hash, digests in
+                monitor.beginSelfWrite(hash: hash, digests: digests)
             },
-            finishSelfWrite: { [weak self] token, count in
-                self?.monitor.finishSelfWrite(token: token, changeCount: count)
+            finishSelfWrite: { token, count in
+                monitor.finishSelfWrite(token: token, changeCount: count)
             },
-            prepareForKeystroke: { [weak self] in
-                self?.onPreparePaste?()
+            prepareForKeystroke: {
+                onPreparePaste?()
             },
             completion: { [weak self] outcome in
                 Task { @MainActor in

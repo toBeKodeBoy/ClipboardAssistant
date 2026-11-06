@@ -23,7 +23,7 @@ final class SQLiteDatabase {
         var db: OpaquePointer?
         let flags = SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX
         guard sqlite3_open_v2(path, &db, flags, nil) == SQLITE_OK else {
-            let message = db.flatMap { String(cString: sqlite3_errmsg($0)) } ?? "open"
+            let message = Self.errorMessage(db: db, fallback: "open")
             sqlite3_close(db)
             throw StoreError.open(message)
         }
@@ -162,8 +162,33 @@ final class SQLiteDatabase {
      */
     private func check(_ code: Int32, _ sql: String) throws {
         if code == SQLITE_OK || code == SQLITE_DONE || code == SQLITE_ROW { return }
-        let message = handle.flatMap { String(cString: sqlite3_errmsg($0)) } ?? sql
-        throw StoreError.sql(message)
+        throw StoreError.sql(Self.errorMessage(db: handle, fallback: sql))
+    }
+
+    /**
+     * 调整这条连接的 sqlite 限制。
+     *
+     * 用来让过长的查询在 sqlite3_step 失败，调用方必须收到错误，不能当成空结果。
+     *
+     * @param id SQLITE_LIMIT_* 常量
+     * @param value 新的上限
+     * @return 设置前的上限
+     */
+    @discardableResult
+    func limit(_ id: Int32, _ value: Int32) -> Int32 {
+        sqlite3_limit(handle, id, value)
+    }
+
+    /**
+     * 读取 sqlite3 错误文本。连接为空时用调用方给的句子。
+     *
+     * @param db 数据库连接，打开失败时可能为空
+     * @param fallback 没有连接时的说明
+     * @return 错误文本
+     */
+    static func errorMessage(db: OpaquePointer?, fallback: String) -> String {
+        guard let db else { return fallback }
+        return String(cString: sqlite3_errmsg(db))
     }
 }
 

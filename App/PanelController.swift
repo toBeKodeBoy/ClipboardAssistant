@@ -174,11 +174,12 @@ final class PanelController: NSObject, NSWindowDelegate {
     /**
      * 关闭面板。
      *
-     * 取消尚未确认的清空和删除置顶，记下当前尺寸，并卸掉按键和面板外点击监听。不修改剪切板。
+     * 取消尚未确认的清空和删除置顶，丢掉单条删除的撤销，记下当前尺寸，并卸掉按键和面板外点击监听。不修改剪切板。
      */
     func closePanel() {
         model.confirmClearAll = false
         model.cancelPinnedDelete()
+        model.discardUndo()
         model.settings.panelWidth = panel.frame.width
         model.settings.panelHeight = panel.frame.height
         panel.orderOut(nil)

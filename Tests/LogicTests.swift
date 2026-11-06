@@ -539,6 +539,31 @@ final class LogicTests: XCTestCase {
     }
 
     @MainActor
+    func testClosingThePanelDropsSingleDeleteUndo() throws {
+        let harness = try deleteHarness()
+        defer { harness.cleanup() }
+        let model = harness.model
+        let item = try harness.insert("undo-body")
+        model.reload()
+        model.selectedID = item.id
+        let panel = PanelController(model: model)
+        defer { panel.closePanel() }
+        panel.show(placement: .center)
+
+        model.deleteSelected()
+        model.undoDelete()
+
+        XCTAssertEqual(try model.store.fetchAll().map(\.plainText), ["undo-body"])
+
+        model.selectedID = model.items.first?.id
+        model.deleteSelected()
+        panel.closePanel()
+        model.undoDelete()
+
+        XCTAssertEqual(try model.store.count(), 0)
+    }
+
+    @MainActor
     func testModelCancelPinnedDeleteLeavesTheItem() throws {
         let harness = try deleteHarness()
         defer { harness.cleanup() }

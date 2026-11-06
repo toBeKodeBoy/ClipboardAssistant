@@ -272,13 +272,23 @@ final class AppModel: ObservableObject {
     /**
      * 撤销最近一次单条删除。
      *
-     * 没有可撤销的条目时什么也不做。清空全部后撤销栈会被丢掉。
+     * 没有可撤销的条目时什么也不做。清空全部或面板关闭后，撤销会被丢掉。
      */
     func undoDelete() {
         guard let item = undoItem else { return }
         undoItem = nil
         banner = L10n.text("已撤销删除", "Delete undone")
         reinsert(item)
+    }
+
+    /**
+     * 丢掉最近一次单条删除的撤销。
+     *
+     * 面板关闭时调用。条目保持已删除，不写数据库。
+     */
+    func discardUndo() {
+        undoItem = nil
+        undoRepresentations = []
     }
 
     /**
@@ -302,8 +312,7 @@ final class AppModel: ObservableObject {
      */
     func clearAll() throws {
         try store.clearAll()
-        undoItem = nil
-        undoRepresentations = []
+        discardUndo()
         reload()
         AppLog.store.info("cleared history")
     }

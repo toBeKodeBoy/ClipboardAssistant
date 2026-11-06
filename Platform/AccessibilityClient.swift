@@ -110,14 +110,22 @@ enum KeystrokeSender {
         event.post(tap: .cghidEventTap)
     }
 
-    static func sendCommandV() -> Bool {
-        guard AccessibilityClient.isTrusted() else { return false }
+    /**
+     * 创建 ⌘V 的按下和抬起。测试可换成空事件，避免真的把按键发出去。
+     */
+    static var makeCommandVEvents: () -> (CGEvent?, CGEvent?) = {
         let source = CGEventSource(stateID: .hidSystemState)
         source?.localEventsSuppressionInterval = 0
         let keyDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: true)
         let keyUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: false)
         keyDown?.flags = .maskCommand
         keyUp?.flags = .maskCommand
+        return (keyDown, keyUp)
+    }
+
+    static func sendCommandV() -> Bool {
+        guard AccessibilityClient.isTrusted() else { return false }
+        let (keyDown, keyUp) = makeCommandVEvents()
         if let keyDown { postEvent(keyDown) }
         if let keyUp { postEvent(keyUp) }
         return keyDown != nil && keyUp != nil

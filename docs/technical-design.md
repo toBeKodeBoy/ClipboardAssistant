@@ -44,7 +44,7 @@ v1 只做本地历史的采集、搜索、预览和粘贴。片段库、规则�
 - `collectionBehavior` 包含 `canJoinAllSpaces`、`fullScreenAuxiliary`
 - `hidesOnDeactivate = false`，避免一切到其他桌面就消失
 - `becomesKeyOnlyIfNeeded` 为 false。打开后成为关键窗口并聚焦搜索框，从而直接输入搜索和方向键
-- 不把应用激活成普通前台应用，原应用的焦点得以保留
+- 不把应用激活成普通前台应用，原应用的焦点得以保留。因此系统不会处理编辑菜单快捷键。搜索框编辑时，Delete、左右方向键、Home、End 仍作为按键交给输入框；⌘A、⌘C、⌘V、⌘X 发给字段编辑器，⌘Z 和 ⌘⇧Z 走字段编辑器的撤销管理器。编辑中的 ⌘Z 撤销输入，不撤销单条删除
 
 打开面板时记下当时的前台应用，作为本次粘贴目标。关闭面板不修改剪切板。
 

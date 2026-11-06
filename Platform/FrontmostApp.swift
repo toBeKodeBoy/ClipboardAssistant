@@ -18,8 +18,17 @@ enum FrontmostApp {
      */
     static func current() -> (bundleID: String?, name: String) {
         let app = NSWorkspace.shared.frontmostApplication
-        let name = app?.localizedName ?? L10n.text("未知应用", "Unknown App")
-        return (app?.bundleIdentifier, name)
+        return (app?.bundleIdentifier, displayName(app?.localizedName))
+    }
+
+    /**
+     * 前台应用的显示名。没有名字时用「未知应用」。
+     *
+     * @param localizedName 系统给出的本地化名称
+     * @return 用来记录来源的名称
+     */
+    static func displayName(_ localizedName: String?) -> String {
+        localizedName ?? L10n.text("未知应用", "Unknown App")
     }
 
     /**
@@ -50,10 +59,20 @@ enum AppIconCache {
     }()
 
     private static let fallback: NSImage = {
-        let image = NSImage(systemSymbolName: "app", accessibilityDescription: nil) ?? NSImage()
+        let image = symbol(named: "app")
         image.isTemplate = true
         return image
     }()
+
+    /**
+     * 按符号名取模板图。系统没有这个符号时返回空图。
+     *
+     * @param name SF Symbol 名称
+     * @return 符号图或空图
+     */
+    static func symbol(named name: String) -> NSImage {
+        NSImage(systemSymbolName: name, accessibilityDescription: nil) ?? NSImage()
+    }
 
     /**
      * 取来源应用图标。

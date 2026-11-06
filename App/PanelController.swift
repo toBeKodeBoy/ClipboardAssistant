@@ -18,6 +18,18 @@ final class PanelController: NSObject, NSWindowDelegate {
     let panel: NSPanel
     private var keyMonitor: Any?
     private var outsideMonitor: Any?
+    /**
+     * 面板作为关键窗口时的按键处理。
+     *
+     * 与本地监听使用同一个闭包。测试直接调用它，避免把按键送进当前前台应用。
+     */
+    private(set) var keyDown: ((NSEvent) -> NSEvent?)?
+    /**
+     * 面板外鼠标按下时关闭面板。
+     *
+     * 与全局监听使用同一个闭包。测试直接调用它，全局监听收不到本进程发出的事件。
+     */
+    private(set) var outsideMouseDown: ((NSEvent) -> Void)?
 
     /**
      * 创建浮动主面板，并接上粘贴前关闭、失败后重新打开的回调。
@@ -44,6 +56,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.delegate = self
+        panelIsKey = { [weak self] in self?.panel.isKeyWindow == true }
         panel.minSize = NSSize(width: 420, height: 360)
         panel.contentViewController = NSHostingController(rootView: HistoryPanelView().environmentObject(model))
         applyAppearance()
@@ -124,10 +137,19 @@ final class PanelController: NSObject, NSWindowDelegate {
         makeSearchFieldFirstResponder(reportFailure: false)
         DispatchQueue.main.async { [weak self] in
             MainActor.assumeIsolated {
-                guard let self, self.panel.isVisible, !self.isSearchEditing else { return }
-                self.makeSearchFieldFirstResponder(reportFailure: true)
+                self?.retrySearchFieldFocus()
             }
         }
+    }
+
+    /**
+     * 焦点不在搜索框时再设一次，失败则写日志。
+     *
+     * 打开时的同步尝试失败不记录。下一轮主队列仍失败才记录。
+     */
+    func retrySearchFieldFocus() {
+        guard panel.isVisible, !isSearchEditing else { return }
+        makeSearchFieldFirstResponder(reportFailure: true)
     }
 
     /**
@@ -213,8 +235,8 @@ final class PanelController: NSObject, NSWindowDelegate {
      */
     private func origin(for size: NSSize, placement: PanelPlacement? = nil) -> NSPoint {
         let mouse = NSEvent.mouseLocation
-        let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
-        let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
+        let screen = Self.screen(containing: mouse, screens: NSScreen.screens, main: NSScreen.main)
+        let visible = Self.visibleArea(of: screen)
         let resolved = placement ?? model.settings.panelPlacement
         var origin: NSPoint
         if resolved == .center {
@@ -228,15 +250,39 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     /**
+     * 找出鼠标所在的屏幕。没有一块屏幕包含这个点时返回主屏幕。
+     *
+     * @param mouse 鼠标位置
+     * @param screens 候选屏幕
+     * @param main 主屏幕，可以为空
+     * @return 命中的屏幕
+     */
+    static func screen(containing mouse: NSPoint, screens: [NSScreen], main: NSScreen?) -> NSScreen? {
+        screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? main
+    }
+
+    /**
+     * 取屏幕可见区域。没有屏幕时返回 1280×800。
+     *
+     * @param screen 用来摆放面板的屏幕
+     * @return 可见区域
+     */
+    static func visibleArea(of screen: NSScreen?) -> NSRect {
+        screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
+    }
+
+    /**
      * 监听面板外的鼠标按下，用来点击外部关闭。
      */
     private func installOutsideMonitor() {
         if outsideMonitor != nil { return }
-        outsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+        let handler: (NSEvent) -> Void = { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.closePanel()
             }
         }
+        outsideMouseDown = handler
+        outsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown], handler: handler)
     }
 
     /**
@@ -244,16 +290,25 @@ final class PanelController: NSObject, NSWindowDelegate {
      */
     private func installKeyMonitor() {
         if keyMonitor != nil { return }
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, self.panel.isKeyWindow else { return event }
+        let handler: (NSEvent) -> NSEvent? = { [weak self] event in
+            guard let self, self.panelIsKey() else { return event }
             return self.handle(event) ? nil : event
         }
+        keyDown = handler
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown, handler: handler)
     }
+
+    /**
+     * 面板当前是否为关键窗口。
+     *
+     * 按键监听用它决定要不要消费按键。测试可以换成固定结果，避免依赖进程能否成为前台。
+     */
+    var panelIsKey: () -> Bool = { false }
 
     /**
      * 搜索框是否正在编辑。
      *
-     * 为 true 时，Delete、左右方向键和 ⌘Z 交给输入框。
+     * 为 true 时，Delete、左右方向键交给输入框，⌘A、⌘C、⌘V、⌘X、⌘Z 发给字段编辑器。
      */
     private var isSearchEditing: Bool {
         (panel.firstResponder as? NSTextView)?.isFieldEditor == true
@@ -262,7 +317,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     /**
      * 处理主面板快捷键。
      *
-     * 清空或删除置顶的确认框打开时，把回车和 Esc 交给确认框。搜索框编辑中，Delete、左右方向键和 ⌘Z 交给输入框。
+     * 清空或删除置顶的确认框打开时，把回车和 Esc 交给确认框。搜索框编辑中，Delete、左右方向键、Home、End 交给输入框。
+     * ⌘A、⌘C、⌘V、⌘X、⌘Z、⌘⇧Z 由本方法发给字段编辑器。面板不激活应用，系统不会把这些组合键转成编辑动作。
      * ⌘⌫ 始终清空。回车按修饰键选择粘贴、只复制或纯文本。⌫ 删除当前条；置顶条目改为打开确认框。
      *
      * @param event 按键事件
@@ -287,8 +343,14 @@ final class PanelController: NSObject, NSWindowDelegate {
             }
             return true
         }
-        if isSearchEditing && passesToSearchField(event, flags: flags) {
-            return false
+        if isSearchEditing {
+            if let action = searchEditingAction(for: event, flags: flags) {
+                performSearchEditingAction(action)
+                return true
+            }
+            if passesToSearchField(event, flags: flags) {
+                return false
+            }
         }
         if event.keyCode == UInt16(kVK_Return) {
             if flags.contains(.command) {
@@ -327,19 +389,67 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     /**
-     * 判断按键是否应留给搜索框。
+     * 把搜索框编辑动作发给当前字段编辑器。
      *
-     * 编辑中的 Delete、左右方向键、Home、End，以及 ⌘Z、⌘A、⌘C、⌘V、⌘X 交给输入框。
+     * 选择、复制、粘贴、剪切由字段编辑器处理。撤销和重做不在 NSTextView 的选择子上，
+     * 直接发送会抛出无法识别的选择子，所以改走它的撤销管理器。目标是面板自己的第一响应者，
+     * 不走关键窗口，避免面板尚未成为关键窗口时改到别的窗口。
+     *
+     * @param action 由 searchEditingAction 选出的动作
+     */
+    private func performSearchEditingAction(_ action: Selector) {
+        guard let editor = panel.firstResponder as? NSTextView, editor.isFieldEditor else { return }
+        if action == Selector(("undo:")) {
+            editor.undoManager?.undo()
+        } else if action == Selector(("redo:")) {
+            editor.undoManager?.redo()
+        } else {
+            NSApp.sendAction(action, to: editor, from: nil)
+        }
+    }
+
+    /**
+     * 搜索框编辑时要直接发给字段编辑器的动作。
+     *
+     * 面板不激活应用，也没有编辑菜单，系统不会处理这些快捷键。只认单独的 ⌘，以及用来重做的 ⌘⇧Z。
      *
      * @param event 按键事件
      * @param flags 已去掉设备相关位的修饰键
-     * @return 应交给搜索框时返回 true
+     * @return 发给字段编辑器的动作。不是这组快捷键时返回空
+     */
+    func searchEditingAction(for event: NSEvent, flags: NSEvent.ModifierFlags) -> Selector? {
+        let modifiers = flags.intersection([.command, .shift, .option, .control])
+        guard modifiers.contains(.command), !modifiers.contains(.option), !modifiers.contains(.control) else {
+            return nil
+        }
+        switch event.charactersIgnoringModifiers?.lowercased() {
+        case "a" where modifiers == .command:
+            return #selector(NSText.selectAll(_:))
+        case "c" where modifiers == .command:
+            return #selector(NSText.copy(_:))
+        case "v" where modifiers == .command:
+            return #selector(NSText.paste(_:))
+        case "x" where modifiers == .command:
+            return #selector(NSText.cut(_:))
+        case "z" where modifiers == .command:
+            return Selector(("undo:"))
+        case "z" where modifiers == [.command, .shift]:
+            return Selector(("redo:"))
+        default:
+            return nil
+        }
+    }
+
+    /**
+     * 判断按键是否应原样留给搜索框。
+     *
+     * 编辑中的 Delete、左右方向键、Home、End 走文本系统的按键绑定。⌘A、⌘C、⌘V、⌘X、⌘Z 不在这里，它们要另行发送动作。
+     *
+     * @param event 按键事件
+     * @param flags 已去掉设备相关位的修饰键
+     * @return 应交给搜索框的按键处理时返回 true
      */
     func passesToSearchField(_ event: NSEvent, flags: NSEvent.ModifierFlags) -> Bool {
-        if flags.contains(.command) {
-            let character = event.charactersIgnoringModifiers?.lowercased()
-            return character == "z" || character == "a" || character == "c" || character == "v" || character == "x"
-        }
         if flags.contains(.option) || flags.contains(.control) {
             return false
         }

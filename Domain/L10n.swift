@@ -18,8 +18,8 @@ enum L10n {
      * @param en 英文
      * @return 当前语言下应显示的文案
      */
-    static func text(_ zh: String, _ en: String) -> String {
-        let language = Locale.preferredLanguages.first ?? "zh-Hans"
+    static func text(_ zh: String, _ en: String, languages: [String] = Locale.preferredLanguages) -> String {
+        let language = languages.first ?? "zh-Hans"
         return language.hasPrefix("zh") ? zh : en
     }
 }

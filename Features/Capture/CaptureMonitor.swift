@@ -200,7 +200,7 @@ final class CaptureMonitor {
      * @param frontBundleID 当时的前台应用
      * @param settings 当前偏好
      */
-    private func logSkipped(_ snapshot: PasteboardSnapshot, frontBundleID: String?, settings: AppSettings) {
+    func logSkipped(_ snapshot: PasteboardSnapshot, frontBundleID: String?, settings: AppSettings) {
         if snapshot.hasTransientMarker {
             AppLog.capture.info("skip transient")
         } else if settings.ignoreConcealed, snapshot.hasConcealedMarker {
@@ -232,7 +232,19 @@ enum PasteboardReader {
      * @return 供建条目使用的快照
      */
     static func snapshot(_ pasteboard: NSPasteboard, limits: CaptureLimits = CaptureLimits()) -> PasteboardSnapshot {
-        let items = (pasteboard.pasteboardItems ?? []).map { item in
+        read(pasteboard.pasteboardItems, limits: limits)
+    }
+
+    /**
+     * 把已经取出的剪切板项整理成快照。没有条目时按空剪切板处理。
+     *
+     * @param items 剪切板项。系统没有条目时为空
+     * @param limits 单条大小上限
+     * @return 供建条目使用的快照
+     */
+    static func read(_ items: [NSPasteboardItem]?, limits: CaptureLimits = CaptureLimits()) -> PasteboardSnapshot {
+        let resolved = items ?? []
+        let mapped = resolved.map { item in
             var values: [String: Data] = [:]
             var digests: [String: String] = [:]
             var counts: [String: Int] = [:]
@@ -256,7 +268,7 @@ enum PasteboardReader {
             }
             return PasteboardItemData(values: values, fullDigests: digests, fullByteCounts: counts)
         }
-        return PasteboardSnapshot(items: items)
+        return PasteboardSnapshot(items: mapped)
     }
 
     /**

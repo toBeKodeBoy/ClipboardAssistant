@@ -22,18 +22,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
      */
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
-        guard !AppRuntime.isRunningTests else { return }
+        guard !AppRuntime.skipsLaunch else { return }
         do {
             try MainActor.assumeIsolated {
-                try self.launch(directory: try AppPaths.supportDirectory())
+                try self.launch(directory: try AppRuntime.supportDirectory())
             }
         } catch {
-            AppLog.store.error("database open failed \(String(describing: error))")
-            let alert = NSAlert()
-            alert.messageText = L10n.text("无法打开历史数据库", "Couldn't open history database")
-            alert.informativeText = L10n.text("剪切板助手这次没有记录历史。", "Clipboard Assistant won't record history this launch.")
-            alert.runModal()
+            Self.presentDatabaseFailure(error)
         }
+    }
+
+    /**
+     * 告诉用户这次没有开始记录历史。
+     *
+     * 测试可在弹出前关掉模态，避免对话框停住测试进程。
+     *
+     * @param error 打开数据库的错误，只写入日志
+     */
+    static func presentDatabaseFailure(_ error: Error) {
+        AppLog.store.error("database open failed \(String(describing: error))")
+        let alert = NSAlert()
+        alert.messageText = L10n.text("无法打开历史数据库", "Couldn't open history database")
+        alert.informativeText = L10n.text("剪切板助手这次没有记录历史。", "Clipboard Assistant won't record history this launch.")
+        alert.runModal()
     }
 
     /**
@@ -84,6 +95,18 @@ enum AppRuntime {
     static var isRunningTests: Bool {
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     }
+
+    /**
+     * 为 true 时启动只切到菜单栏模式，不打开用户的历史库。
+     *
+     * 测试进程默认跳过。需要覆盖启动失败提示时，测试可以暂时关掉。
+     */
+    static var skipsLaunch: Bool = isRunningTests
+
+    /**
+     * 历史库目录。测试可换成打不开的路径。
+     */
+    static var supportDirectory: () throws -> URL = { try AppPaths.supportDirectory() }
 }
 
 /**

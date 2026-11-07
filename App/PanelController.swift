@@ -7,7 +7,8 @@ import SwiftUI
  *
  * 使用 nonactivatingPanel，呼出时不抢走原应用焦点。becomesKeyOnlyIfNeeded 关闭后，
  * 打开时面板成为关键窗口并聚焦搜索框。打开时记下前台应用；关闭时不改剪切板。
- * 全局热键调用方传入屏幕中心，菜单打开则使用「面板位置」设置。
+ * 全局热键调用方传入屏幕中心，菜单打开则使用「面板位置」设置。两者的默认都是屏幕中心。
+ * 打开时把记住的尺寸收进光标所在屏幕的可见区域；只为适应屏幕而缩小的尺寸，关闭时不覆盖偏好。
  *
  * @author toBeKodeBoy
  * @date 2026/10/27
@@ -30,6 +31,14 @@ final class PanelController: NSObject, NSWindowDelegate {
      * 与全局监听使用同一个闭包。测试直接调用它，全局监听收不到本进程发出的事件。
      */
     private(set) var outsideMouseDown: ((NSEvent) -> Void)?
+    /**
+     * 这次显示实际摆上屏幕的尺寸。
+     *
+     * 关闭时用来区分用户拖拽和「只为放进屏幕而缩小」。还没显示过时为空。
+     */
+    private var appliedSize: NSSize?
+    /** 这次显示是否把首选尺寸缩小后才放进可见区域。 */
+    private var appliedWasClamped = false
 
     /**
      * 创建浮动主面板，并接上粘贴前关闭、失败后重新打开的回调。
@@ -57,8 +66,11 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.isReleasedWhenClosed = false
         panel.delegate = self
         panelIsKey = { [weak self] in self?.panel.isKeyWindow == true }
-        panel.minSize = NSSize(width: 420, height: 360)
-        panel.contentViewController = NSHostingController(rootView: HistoryPanelView().environmentObject(model))
+        panel.minSize = NSSize(width: PanelGeometry.minimumWidth, height: PanelGeometry.minimumHeight)
+        let host = NSHostingController(rootView: HistoryPanelView().environmentObject(model))
+        // 默认的尺寸选项会把 SwiftUI 的最小尺寸写回窗口，打开后把框架收成最小面板。
+        host.sizingOptions = []
+        panel.contentViewController = host
         applyAppearance()
         model.onPreparePaste = { [weak self] in
             self?.closePanel()
@@ -99,10 +111,21 @@ final class PanelController: NSObject, NSWindowDelegate {
             model.banner = nil
         }
         applyAppearance()
-        var frame = panel.frame
-        frame.size = NSSize(width: model.settings.panelWidth, height: model.settings.panelHeight)
-        frame.origin = origin(for: frame.size, placement: placement)
-        panel.setFrame(frame, display: true)
+        let preferred = NSSize(width: model.settings.panelWidth, height: model.settings.panelHeight)
+        let mouse = NSEvent.mouseLocation
+        let screen = Self.screen(containing: mouse, screens: NSScreen.screens, main: NSScreen.main)
+        let visible = Self.visibleArea(of: screen)
+        let resolved = placement ?? model.settings.panelPlacement
+        let placed = PanelGeometry.frame(
+            preferred: preferred,
+            placement: resolved,
+            mouse: mouse,
+            visible: visible
+        )
+        panel.minSize = PanelGeometry.minimumSize(fitting: placed.frame.size)
+        panel.setFrame(placed.frame, display: true)
+        appliedSize = panel.frame.size
+        appliedWasClamped = placed.clamped
         panel.makeKeyAndOrderFront(nil)
         installKeyMonitor()
         installOutsideMonitor()
@@ -197,13 +220,26 @@ final class PanelController: NSObject, NSWindowDelegate {
      * 关闭面板。
      *
      * 取消尚未确认的清空和删除置顶，丢掉单条删除的撤销，记下当前尺寸，并卸掉按键和面板外点击监听。不修改剪切板。
+     * 这次只为放进屏幕而缩小、用户没有再拖拽时，保留原来更大的尺寸。还没显示过就关闭时，记下窗口当前尺寸。
      */
     func closePanel() {
         model.confirmClearAll = false
         model.cancelPinnedDelete()
         model.discardUndo()
-        model.settings.panelWidth = panel.frame.width
-        model.settings.panelHeight = panel.frame.height
+        let current = panel.frame.size
+        if let appliedSize {
+            let remembered = PanelGeometry.sizeToRemember(
+                preferred: NSSize(width: model.settings.panelWidth, height: model.settings.panelHeight),
+                applied: appliedSize,
+                current: current,
+                clamped: appliedWasClamped
+            )
+            model.settings.panelWidth = remembered.width
+            model.settings.panelHeight = remembered.height
+        } else {
+            model.settings.panelWidth = current.width
+            model.settings.panelHeight = current.height
+        }
         panel.orderOut(nil)
         if let keyMonitor {
             NSEvent.removeMonitor(keyMonitor)
@@ -222,31 +258,6 @@ final class PanelController: NSObject, NSWindowDelegate {
      */
     func windowWillClose(_ notification: Notification) {
         closePanel()
-    }
-
-    /**
-     * 计算面板原点，并把它限制在鼠标所在屏幕的可见区域内。
-     *
-     * center 放在该屏幕正中，其余放在指针附近。
-     *
-     * @param size 面板尺寸
-     * @param placement 位置模式。为空时使用设置
-     * @return 左下角坐标
-     */
-    private func origin(for size: NSSize, placement: PanelPlacement? = nil) -> NSPoint {
-        let mouse = NSEvent.mouseLocation
-        let screen = Self.screen(containing: mouse, screens: NSScreen.screens, main: NSScreen.main)
-        let visible = Self.visibleArea(of: screen)
-        let resolved = placement ?? model.settings.panelPlacement
-        var origin: NSPoint
-        if resolved == .center {
-            origin = NSPoint(x: visible.midX - size.width / 2, y: visible.midY - size.height / 2)
-        } else {
-            origin = NSPoint(x: mouse.x, y: mouse.y - size.height)
-        }
-        origin.x = min(max(origin.x, visible.minX), visible.maxX - size.width)
-        origin.y = min(max(origin.y, visible.minY), visible.maxY - size.height)
-        return origin
     }
 
     /**

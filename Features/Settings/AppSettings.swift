@@ -71,7 +71,7 @@ enum PasteBehavior: String, CaseIterable, Identifiable {
 /**
  * 菜单「打开主面板」使用的位置。
  *
- * 全局快捷键不读这个值，始终在光标所在屏幕正中打开。
+ * 全局快捷键不读这个值，始终在光标所在屏幕正中打开。没有保存过位置时，菜单也使用屏幕中心。
  *
  * @author toBeKodeBoy
  * @date 2026/10/27
@@ -223,7 +223,13 @@ final class AppSettings: ObservableObject {
         launchAtLogin = defaults.object(forKey: Keys.launchAtLogin) as? Bool ?? false
         appearance = AppearanceChoice(rawValue: defaults.string(forKey: Keys.appearance) ?? "") ?? .system
         pasteBehavior = PasteBehavior(rawValue: defaults.string(forKey: Keys.pasteBehavior) ?? "") ?? .automatic
-        panelPlacement = PanelPlacement(rawValue: defaults.string(forKey: Keys.panelPlacement) ?? "") ?? .mouse
+        let panelMigration = PanelGeometry.migrate(
+            storedWidth: defaults.object(forKey: Keys.panelWidth) as? Double,
+            storedHeight: defaults.object(forKey: Keys.panelHeight) as? Double,
+            storedPlacement: defaults.string(forKey: Keys.panelPlacement),
+            alreadyMigrated: defaults.bool(forKey: Keys.panelGeometryMigrated)
+        )
+        panelPlacement = panelMigration.preferred.placement
         ignoreConcealed = defaults.object(forKey: Keys.ignoreConcealed) as? Bool ?? true
         recordDuringSecureInput = defaults.object(forKey: Keys.recordDuringSecureInput) as? Bool ?? false
         pauseChoice = PauseChoice(rawValue: defaults.string(forKey: Keys.pauseChoice) ?? "") ?? .manual
@@ -238,14 +244,20 @@ final class AppSettings: ObservableObject {
         pauseHotkeyCode = defaults.object(forKey: Keys.pauseHotkeyCode) as? Int ?? 0
         pauseHotkeyModifiers = defaults.object(forKey: Keys.pauseHotkeyModifiers) as? Int ?? 0
         pauseHotkeyDisplay = defaults.string(forKey: Keys.pauseHotkeyDisplay) ?? ""
-        panelWidth = defaults.object(forKey: Keys.panelWidth) as? Double ?? 640
-        panelHeight = defaults.object(forKey: Keys.panelHeight) as? Double ?? 480
+        panelWidth = panelMigration.preferred.width
+        panelHeight = panelMigration.preferred.height
         if defaults.bool(forKey: Keys.didSeedExclusions) {
             excludedApps = Self.loadExcluded(defaults)
         } else {
             excludedApps = DefaultExclusions.apps.map { ExcludedApp(bundleID: $0.bundleID, name: $0.name) }
             defaults.set(true, forKey: Keys.didSeedExclusions)
             saveExcluded()
+        }
+        if panelMigration.shouldPersist {
+            defaults.set(panelMigration.preferred.width, forKey: Keys.panelWidth)
+            defaults.set(panelMigration.preferred.height, forKey: Keys.panelHeight)
+            defaults.set(panelMigration.preferred.placement.rawValue, forKey: Keys.panelPlacement)
+            defaults.set(true, forKey: Keys.panelGeometryMigrated)
         }
     }
 
@@ -322,5 +334,6 @@ final class AppSettings: ObservableObject {
         static let pauseHotkeyDisplay = "pauseHotkeyDisplay"
         static let panelWidth = "panelWidth"
         static let panelHeight = "panelHeight"
+        static let panelGeometryMigrated = "panelGeometryMigrated"
     }
 }

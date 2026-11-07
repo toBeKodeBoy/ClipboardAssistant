@@ -419,6 +419,361 @@ final class LogicTests: XCTestCase {
         XCTAssertEqual(HistoryPanelLayout.previewHeight(in: 1000), 420, accuracy: 0.001)
     }
 
+    func testPanelGeometryUsesTheCenteredDefaultAndMigratesTheOldFrameOnce() {
+        XCTAssertFalse(PanelGeometry.isFactorySize(width: nil, height: nil))
+        XCTAssertFalse(PanelGeometry.isFactorySize(width: 640, height: nil))
+        XCTAssertFalse(PanelGeometry.isFactorySize(width: nil, height: 480))
+        XCTAssertFalse(PanelGeometry.isFactorySize(width: Double.nan, height: 480))
+        XCTAssertFalse(PanelGeometry.isFactorySize(width: 0, height: 480))
+        XCTAssertFalse(PanelGeometry.isFactorySize(width: -1, height: 480))
+        XCTAssertTrue(PanelGeometry.isFactorySize(width: 641, height: 481))
+        XCTAssertFalse(PanelGeometry.isFactorySize(width: 642, height: 480))
+        XCTAssertFalse(PanelGeometry.isFactorySize(width: 640, height: 482))
+        XCTAssertTrue(PanelGeometry.isFactorySize(width: 420, height: 360))
+        XCTAssertFalse(PanelGeometry.isFactorySize(width: 880, height: 500))
+
+        let fresh = PanelGeometry.migrate(storedWidth: nil, storedHeight: nil, storedPlacement: nil, alreadyMigrated: false)
+        XCTAssertEqual(fresh.preferred, PanelGeometry.Preferred(width: 960, height: 680, placement: .center))
+        XCTAssertTrue(fresh.shouldPersist)
+
+        let legacy = PanelGeometry.migrate(storedWidth: 640, storedHeight: 480, storedPlacement: "mouse", alreadyMigrated: false)
+        XCTAssertEqual(legacy.preferred, fresh.preferred)
+        XCTAssertTrue(legacy.shouldPersist)
+        let minimum = PanelGeometry.migrate(storedWidth: 420, storedHeight: 360, storedPlacement: "mouse", alreadyMigrated: false)
+        XCTAssertEqual(minimum.preferred.placement, .center)
+        XCTAssertEqual(minimum.preferred.width, 960)
+
+        let legacyCenter = PanelGeometry.migrate(storedWidth: 641, storedHeight: 481, storedPlacement: "center", alreadyMigrated: false)
+        XCTAssertEqual(legacyCenter.preferred.placement, .center)
+        XCTAssertEqual(legacyCenter.preferred.width, 960)
+        XCTAssertEqual(legacyCenter.preferred.height, 680)
+
+        let custom = PanelGeometry.migrate(storedWidth: 880, storedHeight: 500, storedPlacement: "mouse", alreadyMigrated: false)
+        XCTAssertEqual(custom.preferred, PanelGeometry.Preferred(width: 880, height: 500, placement: .mouse))
+        XCTAssertTrue(custom.shouldPersist)
+
+        let invalid = PanelGeometry.migrate(storedWidth: Double.nan, storedHeight: 0, storedPlacement: "dock", alreadyMigrated: false)
+        XCTAssertEqual(invalid.preferred, fresh.preferred)
+        let partial = PanelGeometry.migrate(storedWidth: 880, storedHeight: nil, storedPlacement: "", alreadyMigrated: false)
+        XCTAssertEqual(partial.preferred, PanelGeometry.Preferred(width: 880, height: 680, placement: .center))
+        let negative = PanelGeometry.migrate(storedWidth: -5, storedHeight: Double.infinity, storedPlacement: nil, alreadyMigrated: false)
+        XCTAssertEqual(negative.preferred, fresh.preferred)
+
+        let kept = PanelGeometry.migrate(storedWidth: 640, storedHeight: 480, storedPlacement: "mouse", alreadyMigrated: true)
+        XCTAssertEqual(kept.preferred, PanelGeometry.Preferred(width: 640, height: 480, placement: .mouse))
+        XCTAssertFalse(kept.shouldPersist)
+        let repaired = PanelGeometry.migrate(storedWidth: nil, storedHeight: nil, storedPlacement: "dock", alreadyMigrated: true)
+        XCTAssertEqual(repaired.preferred, fresh.preferred)
+        XCTAssertFalse(repaired.shouldPersist)
+    }
+
+    func testPanelGeometryFitsCentersAndRemembersAUserResize() {
+        let screen = CGRect(x: 100, y: 50, width: 2000, height: 1400)
+        let preferred = CGSize(width: 960, height: 680)
+        let centered = PanelGeometry.frame(preferred: preferred, placement: .center, mouse: .zero, visible: screen)
+        XCTAssertFalse(centered.clamped)
+        XCTAssertEqual(centered.frame, CGRect(x: 620, y: 410, width: 960, height: 680))
+
+        let besidePointer = PanelGeometry.frame(
+            preferred: preferred,
+            placement: .mouse,
+            mouse: CGPoint(x: 400, y: 900),
+            visible: screen
+        )
+        XCTAssertEqual(besidePointer.frame, CGRect(x: 400, y: 220, width: 960, height: 680))
+        let pastRight = PanelGeometry.frame(preferred: preferred, placement: .mouse, mouse: CGPoint(x: 5000, y: 900), visible: screen)
+        XCTAssertEqual(pastRight.frame.origin.x, 1140, accuracy: 0.001)
+        let pastLeft = PanelGeometry.frame(preferred: preferred, placement: .mouse, mouse: CGPoint(x: 0, y: 900), visible: screen)
+        XCTAssertEqual(pastLeft.frame.origin.x, 100, accuracy: 0.001)
+        let pastTop = PanelGeometry.frame(preferred: preferred, placement: .mouse, mouse: CGPoint(x: 400, y: 5000), visible: screen)
+        XCTAssertEqual(pastTop.frame.origin.y, 770, accuracy: 0.001)
+        let pastBottom = PanelGeometry.frame(preferred: preferred, placement: .mouse, mouse: CGPoint(x: 400, y: 10), visible: screen)
+        XCTAssertEqual(pastBottom.frame.origin.y, 50, accuracy: 0.001)
+
+        let missingPointer = PanelGeometry.frame(
+            preferred: preferred,
+            placement: .mouse,
+            mouse: CGPoint(x: Double.nan, y: Double.nan),
+            visible: CGRect(x: 0, y: 0, width: 2000, height: 1400)
+        )
+        XCTAssertEqual(missingPointer.frame.origin.x, 1000, accuracy: 0.001)
+        XCTAssertEqual(missingPointer.frame.origin.y, 20, accuracy: 0.001)
+        let missingX = PanelGeometry.frame(
+            preferred: preferred,
+            placement: .mouse,
+            mouse: CGPoint(x: Double.nan, y: 100),
+            visible: CGRect(x: 0, y: 0, width: 2000, height: 1400)
+        )
+        XCTAssertEqual(missingX.frame.origin, CGPoint(x: 1000, y: 0))
+        let missingY = PanelGeometry.frame(
+            preferred: preferred,
+            placement: .mouse,
+            mouse: CGPoint(x: 100, y: Double.infinity),
+            visible: CGRect(x: 0, y: 0, width: 2000, height: 1400)
+        )
+        XCTAssertEqual(missingY.frame.origin, CGPoint(x: 100, y: 20))
+
+        let tooWide = PanelGeometry.frame(
+            preferred: CGSize(width: 2000, height: 680),
+            placement: .center,
+            mouse: .zero,
+            visible: CGRect(x: 0, y: 0, width: 800, height: 2000)
+        )
+        XCTAssertTrue(tooWide.clamped)
+        XCTAssertEqual(tooWide.frame.size, CGSize(width: 800, height: 680))
+        let tooTall = PanelGeometry.frame(
+            preferred: CGSize(width: 960, height: 2000),
+            placement: .center,
+            mouse: .zero,
+            visible: CGRect(x: 0, y: 0, width: 2000, height: 900)
+        )
+        XCTAssertTrue(tooTall.clamped)
+        XCTAssertEqual(tooTall.frame.size, CGSize(width: 960, height: 900))
+        let tooBig = PanelGeometry.frame(
+            preferred: CGSize(width: 5000, height: 5000),
+            placement: .center,
+            mouse: .zero,
+            visible: CGRect(x: 0, y: 0, width: 1000, height: 900)
+        )
+        XCTAssertTrue(tooBig.clamped)
+        XCTAssertEqual(tooBig.frame.size, CGSize(width: 1000, height: 900))
+        let invalidPreferred = PanelGeometry.frame(
+            preferred: CGSize(width: Double.infinity, height: -1),
+            placement: .center,
+            mouse: .zero,
+            visible: CGRect(x: 0, y: 0, width: 2000, height: 2000)
+        )
+        XCTAssertFalse(invalidPreferred.clamped)
+        XCTAssertEqual(invalidPreferred.frame.size, CGSize(width: 960, height: 680))
+
+        let grown = PanelGeometry.frame(
+            preferred: CGSize(width: 100, height: 100),
+            placement: .center,
+            mouse: .zero,
+            visible: CGRect(x: 0, y: 0, width: 2000, height: 2000)
+        )
+        XCTAssertFalse(grown.clamped)
+        XCTAssertEqual(grown.frame.size, CGSize(width: 420, height: 360))
+        let tinyScreen = PanelGeometry.frame(
+            preferred: preferred,
+            placement: .center,
+            mouse: CGPoint(x: 1000, y: 1000),
+            visible: CGRect(x: 100, y: 50, width: 200, height: 200)
+        )
+        XCTAssertTrue(tinyScreen.clamped)
+        XCTAssertEqual(tinyScreen.frame, CGRect(x: 100, y: 50, width: 200, height: 200))
+        let noScreen = PanelGeometry.frame(
+            preferred: preferred,
+            placement: .center,
+            mouse: .zero,
+            visible: CGRect(x: 4, y: 9, width: 0, height: 0)
+        )
+        XCTAssertFalse(noScreen.clamped)
+        XCTAssertEqual(noScreen.frame, CGRect(x: 4, y: 9, width: 960, height: 680))
+        let brokenScreen = PanelGeometry.frame(
+            preferred: CGSize(width: Double.nan, height: 0),
+            placement: .mouse,
+            mouse: CGPoint(x: Double.nan, y: 1),
+            visible: CGRect(x: Double.nan, y: Double.infinity, width: 0, height: 0)
+        )
+        XCTAssertEqual(brokenScreen.frame.origin, CGPoint.zero)
+        XCTAssertEqual(brokenScreen.frame.size, CGSize(width: 960, height: 680))
+
+        XCTAssertEqual(PanelGeometry.fittedLength(preferred: 100, minimum: 420, visibleLength: -1), 420, accuracy: 0.001)
+        XCTAssertEqual(PanelGeometry.fittedLength(preferred: 500, minimum: 420, visibleLength: 0), 500, accuracy: 0.001)
+        XCTAssertEqual(PanelGeometry.fittedLength(preferred: 600, minimum: 420, visibleLength: 1000), 600, accuracy: 0.001)
+        XCTAssertEqual(PanelGeometry.fittedLength(preferred: Double.nan, minimum: 420, visibleLength: 1000), 420, accuracy: 0.001)
+        XCTAssertEqual(
+            PanelGeometry.clamp(CGPoint(x: 50, y: 10), size: CGSize(width: 200, height: 50), visible: CGRect(x: 0, y: 0, width: 100, height: 100)),
+            CGPoint(x: 0, y: 10)
+        )
+        XCTAssertEqual(
+            PanelGeometry.clamp(CGPoint(x: Double.nan, y: Double.nan), size: CGSize(width: 10, height: 10), visible: CGRect(x: 5, y: 6, width: 100, height: 80)),
+            CGPoint(x: 5, y: 6)
+        )
+        XCTAssertEqual(
+            PanelGeometry.clamp(CGPoint(x: 1, y: 2), size: CGSize(width: 10, height: 10), visible: CGRect(x: 4, y: 9, width: 10, height: 0)),
+            CGPoint(x: 4, y: 9)
+        )
+        XCTAssertEqual(PanelGeometry.finite(0, fallback: 3), 0, accuracy: 0.001)
+        XCTAssertEqual(PanelGeometry.finite(-2, fallback: 3), -2, accuracy: 0.001)
+        XCTAssertEqual(PanelGeometry.finite(Double.nan, fallback: 3), 3, accuracy: 0.001)
+        XCTAssertEqual(PanelGeometry.finite(Double.infinity, fallback: 3), 3, accuracy: 0.001)
+        XCTAssertEqual(PanelGeometry.finitePositive(nil, fallback: 9), 9, accuracy: 0.001)
+        XCTAssertEqual(PanelGeometry.finitePositive(Double.nan, fallback: 9), 9, accuracy: 0.001)
+        XCTAssertEqual(PanelGeometry.finitePositive(0, fallback: 9), 9, accuracy: 0.001)
+        XCTAssertEqual(PanelGeometry.finitePositive(-1, fallback: 9), 9, accuracy: 0.001)
+        XCTAssertEqual(PanelGeometry.finitePositive(Double.infinity, fallback: 9), 9, accuracy: 0.001)
+        XCTAssertEqual(PanelGeometry.finitePositive(5, fallback: 9), 5, accuracy: 0.001)
+        XCTAssertEqual(PanelGeometry.limit(5, low: 0, high: 10), 5, accuracy: 0.001)
+        XCTAssertEqual(PanelGeometry.limit(-1, low: 0, high: 10), 0, accuracy: 0.001)
+        XCTAssertEqual(PanelGeometry.limit(12, low: 0, high: 10), 10, accuracy: 0.001)
+        XCTAssertEqual(PanelGeometry.limit(4, low: 3, high: 1), 3, accuracy: 0.001)
+        XCTAssertTrue(PanelGeometry.nearly(1, 2))
+        XCTAssertFalse(PanelGeometry.nearly(1, 2.01))
+        XCTAssertFalse(PanelGeometry.nearly(Double.nan, 1))
+        XCTAssertFalse(PanelGeometry.nearly(1, Double.nan))
+        XCTAssertFalse(PanelGeometry.nearly(Double.infinity, Double.infinity))
+
+        let preferredSize = CGSize(width: 800, height: 600)
+        let applied = CGSize(width: 400, height: 300)
+        XCTAssertEqual(
+            PanelGeometry.sizeToRemember(preferred: preferredSize, applied: applied, current: applied, clamped: true),
+            preferredSize
+        )
+        XCTAssertEqual(
+            PanelGeometry.sizeToRemember(preferred: CGSize(width: Double.nan, height: 0), applied: applied, current: applied, clamped: true),
+            CGSize(width: 960, height: 680)
+        )
+        XCTAssertEqual(
+            PanelGeometry.sizeToRemember(preferred: preferredSize, applied: applied, current: CGSize(width: 402, height: 300), clamped: true),
+            CGSize(width: 402, height: 300)
+        )
+        XCTAssertEqual(
+            PanelGeometry.sizeToRemember(preferred: preferredSize, applied: applied, current: CGSize(width: 400, height: 303), clamped: true),
+            CGSize(width: 400, height: 303)
+        )
+        XCTAssertEqual(
+            PanelGeometry.sizeToRemember(preferred: preferredSize, applied: preferredSize, current: preferredSize, clamped: false),
+            preferredSize
+        )
+        XCTAssertEqual(
+            PanelGeometry.sizeToRemember(preferred: CGSize(width: 700, height: 500), applied: preferredSize, current: CGSize.zero, clamped: false),
+            CGSize(width: 700, height: 500)
+        )
+        XCTAssertEqual(
+            PanelGeometry.sizeToRemember(preferred: CGSize(width: Double.nan, height: Double.nan), applied: applied, current: CGSize(width: 0, height: -4), clamped: false),
+            CGSize(width: 960, height: 680)
+        )
+        XCTAssertEqual(
+            PanelGeometry.sizeToRemember(preferred: preferredSize, applied: applied, current: CGSize(width: 401, height: 300), clamped: true),
+            preferredSize
+        )
+        XCTAssertEqual(
+            PanelGeometry.sizeToRemember(preferred: preferredSize, applied: preferredSize, current: CGSize(width: 810, height: 600), clamped: false),
+            CGSize(width: 810, height: 600)
+        )
+
+        XCTAssertEqual(PanelGeometry.minimumSize(fitting: CGSize(width: 960, height: 680)), CGSize(width: 420, height: 360))
+        XCTAssertEqual(PanelGeometry.minimumSize(fitting: CGSize(width: 200, height: 0.5)), CGSize(width: 200, height: 1))
+        XCTAssertEqual(PanelGeometry.minimumSize(fitting: CGSize(width: 0, height: Double.nan)), CGSize(width: 420, height: 360))
+    }
+
+    func testSavedPanelFrameMigratesOnceAndThenKeepsALaterChoice() {
+        let suite = "panel-frame-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(640.0, forKey: "panelWidth")
+        defaults.set(480.0, forKey: "panelHeight")
+        defaults.set("mouse", forKey: "panelPlacement")
+
+        let migrated = AppSettings(defaults: defaults)
+        XCTAssertEqual(migrated.panelWidth, 960, accuracy: 0.001)
+        XCTAssertEqual(migrated.panelHeight, 680, accuracy: 0.001)
+        XCTAssertEqual(migrated.panelPlacement, .center)
+        XCTAssertEqual(defaults.double(forKey: "panelWidth"), 960, accuracy: 0.001)
+        XCTAssertEqual(defaults.string(forKey: "panelPlacement"), "center")
+        XCTAssertTrue(defaults.bool(forKey: "panelGeometryMigrated"))
+
+        migrated.panelWidth = 640
+        migrated.panelHeight = 480
+        migrated.panelPlacement = .mouse
+        let chosen = AppSettings(defaults: defaults)
+        XCTAssertEqual(chosen.panelWidth, 640, accuracy: 0.001)
+        XCTAssertEqual(chosen.panelHeight, 480, accuracy: 0.001)
+        XCTAssertEqual(chosen.panelPlacement, .mouse)
+
+        let customSuite = "panel-custom-\(UUID().uuidString)"
+        let customDefaults = UserDefaults(suiteName: customSuite)!
+        customDefaults.removePersistentDomain(forName: customSuite)
+        defer { customDefaults.removePersistentDomain(forName: customSuite) }
+        customDefaults.set(880.0, forKey: "panelWidth")
+        customDefaults.set(500.0, forKey: "panelHeight")
+        customDefaults.set("mouse", forKey: "panelPlacement")
+        let custom = AppSettings(defaults: customDefaults)
+        XCTAssertEqual(custom.panelWidth, 880, accuracy: 0.001)
+        XCTAssertEqual(custom.panelHeight, 500, accuracy: 0.001)
+        XCTAssertEqual(custom.panelPlacement, .mouse)
+        XCTAssertTrue(customDefaults.bool(forKey: "panelGeometryMigrated"))
+
+        let doneSuite = "panel-done-\(UUID().uuidString)"
+        let doneDefaults = UserDefaults(suiteName: doneSuite)!
+        doneDefaults.removePersistentDomain(forName: doneSuite)
+        defer { doneDefaults.removePersistentDomain(forName: doneSuite) }
+        doneDefaults.set(true, forKey: "panelGeometryMigrated")
+        doneDefaults.set("dock", forKey: "panelPlacement")
+        let done = AppSettings(defaults: doneDefaults)
+        XCTAssertEqual(done.panelWidth, 960, accuracy: 0.001)
+        XCTAssertEqual(done.panelHeight, 680, accuracy: 0.001)
+        XCTAssertEqual(done.panelPlacement, .center)
+        XCTAssertNil(doneDefaults.object(forKey: "panelWidth"))
+        XCTAssertEqual(doneDefaults.string(forKey: "panelPlacement"), "dock")
+    }
+
+    @MainActor
+    func testPanelOpensInTheCenterAndDoesNotPersistAScreenFit() throws {
+        let harness = try deleteHarness()
+        defer { harness.cleanup() }
+        let panel = PanelController(model: harness.model)
+        XCTAssertFalse(panel.panelIsKey())
+        let initial = panel.panel.frame.size
+        panel.closePanel()
+        XCTAssertEqual(harness.model.settings.panelWidth, initial.width, accuracy: 0.5)
+        XCTAssertEqual(harness.model.settings.panelHeight, initial.height, accuracy: 0.5)
+        XCTAssertFalse(panel.panel.isVisible)
+
+        harness.model.settings.panelWidth = PanelGeometry.defaultWidth
+        harness.model.settings.panelHeight = PanelGeometry.defaultHeight
+        harness.model.settings.panelPlacement = .center
+        let mouse = NSEvent.mouseLocation
+        let visible = PanelController.visibleArea(
+            of: PanelController.screen(containing: mouse, screens: NSScreen.screens, main: NSScreen.main)
+        )
+        let expected = PanelGeometry.frame(
+            preferred: CGSize(width: PanelGeometry.defaultWidth, height: PanelGeometry.defaultHeight),
+            placement: .center,
+            mouse: mouse,
+            visible: visible
+        )
+        panel.show()
+        XCTAssertEqual(panel.panel.frame.origin.x, expected.frame.origin.x, accuracy: 1)
+        XCTAssertEqual(panel.panel.frame.origin.y, expected.frame.origin.y, accuracy: 1)
+        XCTAssertEqual(panel.panel.frame.width, expected.frame.width, accuracy: 1)
+        XCTAssertEqual(panel.panel.frame.height, expected.frame.height, accuracy: 1)
+        panel.panel.contentView?.layoutSubtreeIfNeeded()
+        XCTAssertEqual(panel.panel.contentView?.bounds.width ?? 0, panel.panel.frame.width, accuracy: 2)
+        XCTAssertGreaterThan(panel.panel.contentView?.bounds.height ?? 0, 360)
+
+        panel.panel.setFrame(
+            NSRect(x: panel.panel.frame.minX, y: panel.panel.frame.minY, width: 880, height: 640),
+            display: true
+        )
+        panel.closePanel()
+        XCTAssertEqual(harness.model.settings.panelWidth, 880, accuracy: 1)
+        XCTAssertEqual(harness.model.settings.panelHeight, 640, accuracy: 1)
+
+        harness.model.settings.panelWidth = 80_000
+        harness.model.settings.panelHeight = 80_000
+        harness.model.settings.panelPlacement = .mouse
+        let fitted = PanelGeometry.frame(
+            preferred: CGSize(width: 80_000, height: 80_000),
+            placement: .mouse,
+            mouse: mouse,
+            visible: visible
+        )
+        panel.show()
+        XCTAssertEqual(panel.panel.frame.width, fitted.frame.width, accuracy: 1)
+        XCTAssertEqual(panel.panel.frame.height, fitted.frame.height, accuracy: 1)
+        XCTAssertLessThanOrEqual(panel.panel.frame.maxX, visible.maxX + 1)
+        XCTAssertGreaterThanOrEqual(panel.panel.frame.minX, visible.minX - 1)
+        XCTAssertLessThanOrEqual(panel.panel.frame.maxY, visible.maxY + 1)
+        XCTAssertGreaterThanOrEqual(panel.panel.frame.minY, visible.minY - 1)
+        panel.closePanel()
+        XCTAssertEqual(harness.model.settings.panelWidth, 80_000, accuracy: 0.1)
+        XCTAssertEqual(harness.model.settings.panelHeight, 80_000, accuracy: 0.1)
+    }
+
     func testGroupingPlacesRecentUnpinnedInJustNow() {
         let item = sample(id: "1", lastUsedAt: Date())
         XCTAssertEqual(HistoryGrouping.section(for: item), .justNow)
@@ -810,7 +1165,7 @@ final class LogicTests: XCTestCase {
         XCTAssertEqual(PermissionGuideCopy.usableHeight(intrinsic: 219, preferred: 640), 640)
         XCTAssertEqual(PermissionGuideCopy.usableHeight(intrinsic: 641, preferred: 220), 220)
         XCTAssertEqual(PermissionGuideCopy.usableHeight(intrinsic: 641, preferred: 219), 360)
-        XCTAssertEqual(PermissionGuideCopy.usableHeight(intrinsic: .nan, preferred: .infinity), 360)
+        XCTAssertEqual(PermissionGuideCopy.usableHeight(intrinsic: Double.nan, preferred: Double.infinity), 360)
         XCTAssertEqual(PermissionGuideCopy.width, 460)
     }
 

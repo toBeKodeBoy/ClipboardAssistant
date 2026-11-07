@@ -23,7 +23,12 @@ struct HistoryPanelView: View {
             }
             footer
         }
-        .frame(minWidth: 420, minHeight: 360)
+        .frame(
+            minWidth: PanelGeometry.minimumWidth,
+            maxWidth: .infinity,
+            minHeight: PanelGeometry.minimumHeight,
+            maxHeight: .infinity
+        )
         .alert(L10n.text("删除置顶条目？", "Delete pinned item?"), isPresented: pinnedDeletePresented) {
             pinnedDeleteActions(pendingID: model.pendingPinnedDeleteID)
         } message: {

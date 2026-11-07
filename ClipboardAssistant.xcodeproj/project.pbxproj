@@ -10,6 +10,7 @@
 		A100000000000000000001F4 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000001 /* AppDelegate.swift */; };
 		A100000000000000000001F5 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* AppModel.swift */; };
 		A100000000000000000001F6 /* PanelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000003 /* PanelController.swift */; };
+		A10000000000000000000337 /* PanelGeometry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000037 /* PanelGeometry.swift */; };
 		A100000000000000000001F7 /* StatusItemController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000004 /* StatusItemController.swift */; };
 		A100000000000000000001F8 /* ClipboardItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000005 /* ClipboardItem.swift */; };
 		A100000000000000000001F9 /* ContentHash.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000006 /* ContentHash.swift */; };
@@ -53,6 +54,7 @@
 		A10000000000000000000001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		A10000000000000000000002 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		A10000000000000000000003 /* PanelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelController.swift; sourceTree = "<group>"; };
+		A10000000000000000000037 /* PanelGeometry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PanelGeometry.swift; sourceTree = "<group>"; };
 		A10000000000000000000004 /* StatusItemController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusItemController.swift; sourceTree = "<group>"; };
 		A10000000000000000000005 /* ClipboardItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardItem.swift; sourceTree = "<group>"; };
 		A10000000000000000000006 /* ContentHash.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentHash.swift; sourceTree = "<group>"; };
@@ -113,6 +115,7 @@
 				A10000000000000000000001 /* AppDelegate.swift */,
 				A10000000000000000000002 /* AppModel.swift */,
 				A10000000000000000000003 /* PanelController.swift */,
+				A10000000000000000000037 /* PanelGeometry.swift */,
 				A10000000000000000000004 /* StatusItemController.swift */,
 			);
 			path = App;
@@ -299,6 +302,7 @@
 				A100000000000000000001F4 /* AppDelegate.swift */,
 				A100000000000000000001F5 /* AppModel.swift */,
 				A100000000000000000001F6 /* PanelController.swift */,
+				A10000000000000000000337 /* PanelGeometry.swift */,
 				A100000000000000000001F7 /* StatusItemController.swift */,
 				A100000000000000000001F8 /* ClipboardItem.swift */,
 				A100000000000000000001F9 /* ContentHash.swift */,

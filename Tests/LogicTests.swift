@@ -1318,6 +1318,39 @@ final class LogicTests: XCTestCase {
     }
 
     @MainActor
+    func testClassicStatusIconPixelsAtBothScales() throws {
+        for scale in [1, 2] {
+            for paused in [false, true] {
+                for trusted in [false, true] {
+                    let image = StatusIcon.image(paused: paused, trusted: trusted)
+                    XCTAssertTrue(image.isTemplate)
+                    XCTAssertEqual(image.size, NSSize(width: 18, height: 18))
+                    let bitmap = try XCTUnwrap(NSBitmapImageRep(
+                        bitmapDataPlanes: nil, pixelsWide: 18 * scale, pixelsHigh: 18 * scale,
+                        bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                        isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+                    bitmap.size = image.size
+                    let context = try XCTUnwrap(NSGraphicsContext(bitmapImageRep: bitmap))
+                    NSGraphicsContext.saveGraphicsState()
+                    NSGraphicsContext.current = context
+                    image.draw(in: NSRect(origin: .zero, size: image.size))
+                    context.flushGraphics()
+                    NSGraphicsContext.restoreGraphicsState()
+                    // Bitmap rows run from the top; these samples avoid antialiased edges.
+                    func alpha(_ x: Int, _ y: Int) -> CGFloat {
+                        bitmap.colorAt(x: x * scale, y: y * scale)!.alphaComponent
+                    }
+                    XCTAssertGreaterThan(alpha(6, 7), 0.5, "Long text line")
+                    XCTAssertGreaterThan(alpha(6, 10), 0.5, "Short text line")
+                    XCTAssertLessThan(alpha(0, 0), 0.01, "Transparent margin")
+                    XCTAssertEqual(alpha(16, 14) > 0.5, !trusted, "Permission dot at bottom right")
+                    XCTAssertEqual(alpha(9, 9) > 0.5, paused, "Pause slash through center")
+                }
+            }
+        }
+    }
+
+    @MainActor
     func testStatusIconDrawsPauseSlashAndTrustDot() {
         for paused in [false, true] {
             for trusted in [false, true] {

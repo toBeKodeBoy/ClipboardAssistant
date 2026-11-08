@@ -601,22 +601,42 @@ enum StatusIcon {
      * @return 模板图
      */
     static func image(paused: Bool, trusted: Bool) -> NSImage {
-        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
-            let symbol = NSImage(systemSymbolName: "clipboard", accessibilityDescription: nil)?
-                .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 13, weight: .regular))
-            symbol?.isTemplate = false
-            symbol?.draw(in: rect.insetBy(dx: 1, dy: 2))
+        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
+            NSColor.black.setStroke()
+            let body = NSBezierPath(roundedRect: NSRect(x: 3, y: 2, width: 12, height: 13), xRadius: 2, yRadius: 2)
+            body.lineWidth = 1.6
+            body.stroke()
+            let clip = NSBezierPath(roundedRect: NSRect(x: 6, y: 13.5, width: 6, height: 3), xRadius: 1.5, yRadius: 1.5)
+            NSGraphicsContext.current?.compositingOperation = .copy
+            NSColor.clear.setFill()
+            clip.fill()
+            NSGraphicsContext.current?.compositingOperation = .sourceOver
+            clip.lineWidth = 1.6
+            clip.stroke()
+            let text = NSBezierPath()
+            text.move(to: NSPoint(x: 6, y: 11))
+            text.line(to: NSPoint(x: 12, y: 11))
+            text.move(to: NSPoint(x: 6, y: 8))
+            text.line(to: NSPoint(x: 9, y: 8))
+            text.lineWidth = 1.6
+            text.lineCapStyle = .round
+            text.stroke()
             if paused {
                 let slash = NSBezierPath()
-                slash.move(to: NSPoint(x: 3, y: 3))
-                slash.line(to: NSPoint(x: 15, y: 15))
-                slash.lineWidth = 1.4
-                NSColor.black.setStroke()
+                slash.move(to: NSPoint(x: 2, y: 2))
+                slash.line(to: NSPoint(x: 16, y: 16))
+                slash.lineWidth = 1.6
+                slash.lineCapStyle = .round
                 slash.stroke()
             }
             if !trusted {
+                let badge = NSRect(x: 12, y: 1, width: 5, height: 5)
+                NSGraphicsContext.current?.compositingOperation = .copy
+                NSColor.clear.setFill()
+                NSBezierPath(ovalIn: badge.insetBy(dx: -1, dy: -1)).fill()
+                NSGraphicsContext.current?.compositingOperation = .sourceOver
                 NSColor.black.setFill()
-                NSBezierPath(ovalIn: NSRect(x: 12, y: 12, width: 5, height: 5)).fill()
+                NSBezierPath(ovalIn: badge).fill()
             }
             return true
         }

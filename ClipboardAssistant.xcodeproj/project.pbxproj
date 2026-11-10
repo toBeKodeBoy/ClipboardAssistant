@@ -46,6 +46,8 @@
 		A1000000000000000000020F /* Assets.xcassets in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001C /* Assets.xcassets */; };
 		A10000000000000000000210 /* InfoPlist.strings in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001D /* InfoPlist.strings */; };
 		A10000000000000000000211 /* InfoPlist.strings in Sources */ = {isa = PBXBuildFile; fileRef = A1000000000000000000001E /* InfoPlist.strings */; };
+		B11000000000000000000100 /* SnippetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11000000000000000000000 /* SnippetTests.swift */; };
+		B11000000000000000000101 /* SnippetStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11000000000000000000001 /* SnippetStoreTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -91,6 +93,8 @@
 		A1000000000000000000001D /* InfoPlist.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = InfoPlist.strings; sourceTree = "<group>"; };
 		A1000000000000000000001E /* InfoPlist.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = InfoPlist.strings; sourceTree = "<group>"; };
 		A1000000000000000000001F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B11000000000000000000000 /* SnippetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnippetTests.swift; sourceTree = "<group>"; };
+		B11000000000000000000001 /* SnippetStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnippetStoreTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -186,6 +190,8 @@
 				A1000000000000000000001A /* HistoryStoreTests.swift */,
 				A1000000000000000000001B /* LogicTests.swift */,
 				A10000000000000000000021 /* CoverageTests.swift */,
+				B11000000000000000000001 /* SnippetStoreTests.swift */,
+				B11000000000000000000000 /* SnippetTests.swift */,
 			);
 			path = Tests;
 			sourceTree = "<group>";
@@ -342,6 +348,8 @@
 				A1000000000000000000020D /* HistoryStoreTests.swift */,
 				A1000000000000000000020E /* LogicTests.swift */,
 				A10000000000000000000221 /* CoverageTests.swift */,
+				B11000000000000000000101 /* SnippetStoreTests.swift */,
+				B11000000000000000000100 /* SnippetTests.swift */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

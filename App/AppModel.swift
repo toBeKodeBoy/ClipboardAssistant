@@ -110,7 +110,7 @@ final class AppModel: ObservableObject {
             dismissClearAllFailureIfHistoryEmpty()
         } catch {
             AppLog.store.error("reload failed")
-            banner = L10n.text("历史加载失败，请重试", "Could not load history. Please retry.")
+            banner = clearAllError ?? L10n.text("历史加载失败，请重试", "Could not load history. Please retry.")
         }
     }
 
@@ -170,6 +170,12 @@ final class AppModel: ObservableObject {
      * @param mode 粘贴模式
      * @param itemID 条目标识，为空时用 selectedID
      */
+    /// Hover copies without changing keyboard selection or sending a paste keystroke.
+    func copyHistoryOnHover(itemID: String) {
+        guard let item = items.first(where: { $0.id == itemID }), !item.payloadOversize else { return }
+        paste(mode: .copyOnly, itemID: itemID)
+    }
+
     func paste(mode: PasteMode, itemID: String? = nil) {
         let id = itemID ?? selectedID
         guard let id, let item = items.first(where: { $0.id == id }) else { return }
@@ -216,7 +222,7 @@ final class AppModel: ObservableObject {
     }
 
     func saveHistoryAsSnippet(_ item: ClipboardItem) {
-        guard item.kind == .text, !item.payloadOversize else { return }
+        guard item.kind == .text || item.kind == .rich, !item.payloadOversize else { return }
         showingSnippets = true
         snippetLibrary.reload()
         snippetLibrary.edit(body: item.plainText)

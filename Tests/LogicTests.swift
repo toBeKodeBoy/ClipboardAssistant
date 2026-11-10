@@ -1036,7 +1036,7 @@ final class LogicTests: XCTestCase {
 
         model.reload()
 
-        XCTAssertTrue(model.items.isEmpty)
+        XCTAssertEqual(model.items.map(\.plainText), ["kept"])
         XCTAssertEqual(model.clearAllError, AppModel.clearAllFailedMessage)
         XCTAssertEqual(model.banner, AppModel.clearAllFailedMessage)
     }

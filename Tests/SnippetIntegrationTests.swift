@@ -106,6 +106,65 @@ final class SnippetIntegrationTests: XCTestCase {
         XCTAssertEqual(service.pasteboard.string(forType: .string), "Hello")
     }
 
+    func testHoverCopiesWithoutPreparingPasteOrChangingSelection() throws {
+        let model = try makeModel()
+        for text in ["first", "second"] {
+            let captured = try XCTUnwrap(CaptureBuilder.build(PasteboardSnapshot(items: [PasteboardItemData(values: [PasteboardUTI.plain: Data(text.utf8)])])))
+            _ = try model.store.insertOrTouch(captured, sourceBundleID: nil, sourceName: "test")
+        }
+        model.reload()
+        let first = try XCTUnwrap(model.items.first { $0.plainText == "first" })
+        let second = try XCTUnwrap(model.items.first { $0.plainText == "second" })
+        model.selectedID = first.id
+        var prepared = false
+        model.onPreparePaste = { prepared = true }
+        model.copyHistoryOnHover(itemID: second.id)
+        XCTAssertEqual(model.pasteService.pasteboard.string(forType: .string), "second")
+        XCTAssertEqual(model.selectedID, first.id)
+        XCTAssertFalse(prepared)
+        model.copyHistoryOnHover(itemID: first.id)
+        XCTAssertEqual(model.pasteService.pasteboard.string(forType: .string), "first")
+        if let index = model.items.firstIndex(where: { $0.id == second.id }) {
+            model.items[index].payloadOversize = true
+        }
+        model.copyHistoryOnHover(itemID: second.id)
+        XCTAssertEqual(model.pasteService.pasteboard.string(forType: .string), "first")
+    }
+
+    func testHistorySnippetImportSupportsTextAndRichTextRepeatedly() throws {
+        let model = try makeModel()
+        let captured = try XCTUnwrap(CaptureBuilder.build(PasteboardSnapshot(items: [PasteboardItemData(values: [PasteboardUTI.plain: Data("Hello {{name}}".utf8)])])))
+        _ = try model.store.insertOrTouch(captured, sourceBundleID: nil, sourceName: "test")
+        var item = try XCTUnwrap(model.store.fetchAll().first)
+        let group = try model.store.snippets.saveGroup(name: "Work")
+        for kind in [ItemKind.text, .rich] {
+            item.kind = kind
+            model.saveHistoryAsSnippet(item)
+            XCTAssertTrue(model.showingSnippets)
+            XCTAssertEqual(model.snippetLibrary.draft?.body, item.plainText)
+            model.snippetLibrary.draft?.title = kind.rawValue
+            model.snippetLibrary.draft?.groupID = group.id
+            model.snippetLibrary.saveDraft()
+            XCTAssertNil(model.snippetLibrary.draft)
+            model.showingSnippets = false
+        }
+        let snippets = try model.store.snippets.fetchAll()
+        XCTAssertEqual(snippets.count, 2)
+        XCTAssertTrue(snippets.allSatisfy { $0.groupID == group.id })
+        XCTAssertEqual(try model.store.count(), 1)
+        for kind in [ItemKind.image, .file, .mixed] {
+            item.kind = kind
+            model.saveHistoryAsSnippet(item)
+            XCTAssertNil(model.snippetLibrary.draft)
+            XCTAssertFalse(model.showingSnippets)
+        }
+        item.kind = .rich
+        item.payloadOversize = true
+        model.saveHistoryAsSnippet(item)
+        XCTAssertNil(model.snippetLibrary.draft)
+        XCTAssertFalse(model.showingSnippets)
+    }
+
     func testDraftSaveGroupingAndDiscardConfirmation() throws {
         let model = try makeModel()
         let library = model.snippetLibrary

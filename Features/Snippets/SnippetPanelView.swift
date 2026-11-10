@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct ClipboardPanelView: View {
     @EnvironmentObject private var model: AppModel
@@ -182,7 +183,8 @@ private struct SnippetEditorView: View {
                 }
                 TextField(L10n.text("关键字（选填，例如 ;reply）", "Keyword (optional, e.g. ;reply)"), text: field(\.keyword, fallback: ""))
                 Text(L10n.text("正文 · 使用 {{name}} 插入变量", "Body · Insert variables with {{name}}"))
-                TextEditor(text: field(\.body, fallback: "")).frame(minHeight: 150).border(.quaternary)
+                SnippetBodyEditor(text: field(\.body, fallback: ""))
+                    .frame(height: 180).border(.quaternary)
                     .accessibilityLabel(L10n.text("片段正文", "Snippet body"))
                 if let draft = library.draft {
                     ForEach(draft.variables.indices, id: \.self) { index in
@@ -219,6 +221,55 @@ private struct SnippetEditorView: View {
         Binding(get: { library.draft?.variables[safe: index]?[keyPath: path] ?? false }, set: {
             if library.draft?.variables.indices.contains(index) == true { library.draft?.variables[index][keyPath: path] = $0 }
         })
+    }
+}
+
+/// Give the native text layout an explicit viewport and inset, including for CJK glyphs.
+struct SnippetBodyEditor: NSViewRepresentable {
+    @Binding var text: String
+
+    func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scroll = NSScrollView()
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.borderType = .noBorder
+        let editor = NSTextView(frame: .zero)
+        editor.isRichText = false
+        editor.allowsUndo = true
+        editor.isAutomaticQuoteSubstitutionEnabled = false
+        editor.isAutomaticDashSubstitutionEnabled = false
+        editor.font = .systemFont(ofSize: NSFont.systemFontSize)
+        editor.textContainerInset = NSSize(width: 8, height: 8)
+        editor.isVerticallyResizable = true
+        editor.isHorizontallyResizable = false
+        editor.autoresizingMask = [.width]
+        editor.minSize = .zero
+        editor.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        editor.textContainer?.widthTracksTextView = true
+        editor.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+        editor.string = text
+        editor.delegate = context.coordinator
+        editor.setAccessibilityLabel(L10n.text("片段正文", "Snippet body"))
+        scroll.documentView = editor
+        return scroll
+    }
+
+    func updateNSView(_ scroll: NSScrollView, context: Context) {
+        context.coordinator.text = $text
+        guard let editor = scroll.documentView as? NSTextView else { return }
+        // Do not reset selection, scrolling or marked text during ordinary typing.
+        if editor.string != text && !editor.hasMarkedText() { editor.string = text }
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        var text: Binding<String>
+        init(text: Binding<String>) { self.text = text }
+        func textDidChange(_ notification: Notification) {
+            guard let editor = notification.object as? NSTextView else { return }
+            text.wrappedValue = editor.string
+        }
     }
 }
 

@@ -33,7 +33,7 @@ struct SnippetTemplate {
                 let start = body.index(index, offsetBy: 2)
                 guard let end = body[start...].range(of: "}}") else { throw SnippetError.invalidTemplate }
                 let name = String(body[start..<end.lowerBound])
-                guard name.range(of: "^[A-Za-z][A-Za-z0-9_]{0,31}$", options: .regularExpression) != nil else {
+                guard name.range(of: "^[A-Za-z][A-Za-z0-9_]{0,31}$", options: .regularExpression) == name.startIndex..<name.endIndex else {
                     throw SnippetError.invalidTemplate
                 }
                 tokens.append(.variable(name))

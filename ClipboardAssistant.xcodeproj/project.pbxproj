@@ -51,6 +51,9 @@
 		B11000000000000000000110 /* Snippet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11000000000000000000010 /* Snippet.swift */; };
 		B11000000000000000000111 /* SnippetTemplate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11000000000000000000011 /* SnippetTemplate.swift */; };
 		B11000000000000000000112 /* SnippetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11000000000000000000012 /* SnippetStore.swift */; };
+		B11000000000000000000113 /* SnippetLibraryModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11000000000000000000013 /* SnippetLibraryModel.swift */; };
+		B11000000000000000000114 /* SnippetPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11000000000000000000014 /* SnippetPanelView.swift */; };
+		B11000000000000000000102 /* SnippetIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11000000000000000000002 /* SnippetIntegrationTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -101,6 +104,9 @@
 		B11000000000000000000010 /* Snippet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snippet.swift"; sourceTree = "<group>"; };
 		B11000000000000000000011 /* SnippetTemplate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SnippetTemplate.swift"; sourceTree = "<group>"; };
 		B11000000000000000000012 /* SnippetStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SnippetStore.swift"; sourceTree = "<group>"; };
+		B11000000000000000000013 /* SnippetLibraryModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snippets/SnippetLibraryModel.swift"; sourceTree = "<group>"; };
+		B11000000000000000000014 /* SnippetPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snippets/SnippetPanelView.swift"; sourceTree = "<group>"; };
+		B11000000000000000000002 /* SnippetIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnippetIntegrationTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -150,6 +156,8 @@
 		A100000000000000000007D3 /* Features */ = {
 			isa = PBXGroup;
 			children = (
+				B11000000000000000000014 /* SnippetPanelView.swift */,
+				B11000000000000000000013 /* SnippetLibraryModel.swift */,
 				A100000000000000000007D4 /* Capture */,
 				A100000000000000000007D5 /* History */,
 				A100000000000000000007D6 /* Paste */,
@@ -199,6 +207,7 @@
 				A1000000000000000000001A /* HistoryStoreTests.swift */,
 				A1000000000000000000001B /* LogicTests.swift */,
 				A10000000000000000000021 /* CoverageTests.swift */,
+				B11000000000000000000002 /* SnippetIntegrationTests.swift */,
 				B11000000000000000000001 /* SnippetStoreTests.swift */,
 				B11000000000000000000000 /* SnippetTests.swift */,
 			);
@@ -315,6 +324,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				A100000000000000000001F4 /* AppDelegate.swift */,
+				B11000000000000000000114 /* SnippetPanelView.swift */,
+				B11000000000000000000113 /* SnippetLibraryModel.swift */,
 				B11000000000000000000112 /* SnippetStore.swift */,
 				B11000000000000000000111 /* SnippetTemplate.swift */,
 				B11000000000000000000110 /* Snippet.swift */,
@@ -360,6 +371,7 @@
 				A1000000000000000000020D /* HistoryStoreTests.swift */,
 				A1000000000000000000020E /* LogicTests.swift */,
 				A10000000000000000000221 /* CoverageTests.swift */,
+				B11000000000000000000102 /* SnippetIntegrationTests.swift */,
 				B11000000000000000000101 /* SnippetStoreTests.swift */,
 				B11000000000000000000100 /* SnippetTests.swift */,
 			);

@@ -164,6 +164,9 @@ struct HistoryPanelView: View {
                         Text(item.subtitle).font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
+                    if item.kind == .text && !item.payloadOversize {
+                        Button(L10n.text("保存为片段", "Save as snippet")) { model.saveHistoryAsSnippet(item) }
+                    }
                     Button(item.pinned ? L10n.text("取消置顶", "Unpin") : L10n.text("置顶", "Pin")) {
                         model.togglePin(id: item.id)
                     }

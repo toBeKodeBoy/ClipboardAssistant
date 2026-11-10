@@ -67,7 +67,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.delegate = self
         panelIsKey = { [weak self] in self?.panel.isKeyWindow == true }
         panel.minSize = NSSize(width: PanelGeometry.minimumWidth, height: PanelGeometry.minimumHeight)
-        let host = NSHostingController(rootView: HistoryPanelView().environmentObject(model))
+        let host = NSHostingController(rootView: ClipboardPanelView().environmentObject(model))
         // 默认的尺寸选项会把 SwiftUI 的最小尺寸写回窗口，打开后把框架收成最小面板。
         host.sizingOptions = []
         panel.contentViewController = host
@@ -223,6 +223,7 @@ final class PanelController: NSObject, NSWindowDelegate {
      * 这次只为放进屏幕而缩小、用户没有再拖拽时，保留原来更大的尺寸。还没显示过就关闭时，记下窗口当前尺寸。
      */
     func closePanel() {
+        model.snippetLibrary.close(preservingPaste: model.snippetLibrary.isBusy)
         model.confirmClearAll = false
         model.cancelPinnedDelete()
         model.discardUndo()
@@ -336,6 +337,43 @@ final class PanelController: NSObject, NSWindowDelegate {
      * @return 已消费时返回 true，调用方应吞掉事件
      */
     func handle(_ event: NSEvent) -> Bool {
+        if model.showingSnippets {
+            let library = model.snippetLibrary
+            if library.isBusy { return true }
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if library.pendingDelete != nil || library.pendingDeleteGroup != nil || library.confirmDiscard { return false }
+            if library.draft != nil || library.session != nil || library.groupEditor {
+                if panel.firstResponder is NSTextView, let action = searchEditingAction(for: event, flags: flags) {
+                    performSearchEditingAction(action); return true
+                }
+                if event.keyCode == UInt16(kVK_Escape) {
+                    if library.groupEditor { library.groupEditor = false; library.groupName = ""; library.editingGroup = nil }
+                    else if library.draft != nil { library.cancelDraft() }
+                    else { library.session = nil; library.banner = nil }
+                    return true
+                }
+                if event.keyCode == UInt16(kVK_Return) && flags.contains(.command) {
+                    if library.groupEditor { library.saveGroup() }
+                    else if library.draft != nil { library.saveDraft() } else { library.submit() }
+                    return true
+                }
+                return false
+            }
+            if isSearchEditing, let action = searchEditingAction(for: event, flags: flags) {
+                performSearchEditingAction(action)
+                return true
+            }
+            if event.keyCode == UInt16(kVK_Escape) { closePanel(); return true }
+            if event.keyCode == UInt16(kVK_Return) {
+                library.beginUse(mode: flags.contains(.command) ? .plainCopy : flags.contains(.shift) ? .plainText : .automatic)
+                return true
+            }
+            if event.keyCode == UInt16(kVK_UpArrow) || event.keyCode == UInt16(kVK_DownArrow) {
+                library.moveSelection(down: event.keyCode == UInt16(kVK_DownArrow)); return true
+            }
+            // In particular, Command-Delete must never clear history from this page.
+            return false
+        }
         if ItemDeleteRouting.yieldsKeysToConfirmation(
             confirmClearAll: model.confirmClearAll,
             confirmPinnedDelete: model.confirmPinnedDelete
@@ -409,7 +447,7 @@ final class PanelController: NSObject, NSWindowDelegate {
      * @param action 由 searchEditingAction 选出的动作
      */
     private func performSearchEditingAction(_ action: Selector) {
-        guard let editor = panel.firstResponder as? NSTextView, editor.isFieldEditor else { return }
+        guard let editor = panel.firstResponder as? NSTextView else { return }
         if action == Selector(("undo:")) {
             editor.undoManager?.undo()
         } else if action == Selector(("redo:")) {

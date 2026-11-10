@@ -13,6 +13,7 @@ import SQLite3
 final class HistoryStore {
     /** 应用支持目录，数据库和负载都在这里。 */
     let directory: URL
+    let snippets: SnippetStore
     /** 历史元数据库。 */
     private let database: SQLiteDatabase
     /** 负载文件和缩略图。 */
@@ -31,7 +32,9 @@ final class HistoryStore {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         database = try SQLiteDatabase(path: directory.appendingPathComponent("history.db").path)
         payloads = try PayloadStore(root: directory)
+        snippets = SnippetStore(database: database, lock: lock)
         try migrate()
+        try snippets.migrate()
     }
 
     /**
@@ -312,11 +315,14 @@ final class HistoryStore {
     /**
      * 创建历史表、负载表和索引。
      *
-     * 已存在时不改表结构。user_version 固定为 1。
+     * 保留已迁移版本；拒绝比当前应用更新的数据库。
      *
      * @throws StoreError.sql 建表失败时抛出
      */
     private func migrate() throws {
+        var version: Int64 = 0
+        try database.query("PRAGMA user_version") { version = database.int64($0, 0) }
+        guard version <= 2 else { throw SnippetError.futureVersion }
         try database.execute("""
             CREATE TABLE IF NOT EXISTS items (
                 id TEXT PRIMARY KEY,
@@ -347,7 +353,7 @@ final class HistoryStore {
                 PRIMARY KEY (item_id, uti)
             );
             """)
-        try database.execute("PRAGMA user_version = 1;")
+        if version == 0 { try database.execute("PRAGMA user_version = 1;") }
     }
 
     /**

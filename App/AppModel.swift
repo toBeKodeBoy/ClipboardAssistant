@@ -11,6 +11,8 @@ import Foundation
  */
 @MainActor
 final class AppModel: ObservableObject {
+    @Published var showingSnippets = false
+    let snippetLibrary: SnippetLibraryModel
     @Published var items: [ClipboardItem] = []
     @Published var query = ""
     @Published var filter: ItemFilter = .all
@@ -66,6 +68,11 @@ final class AppModel: ObservableObject {
     init(store: HistoryStore, settings: AppSettings) {
         self.store = store
         self.settings = settings
+        snippetLibrary = SnippetLibraryModel(store: store.snippets)
+        snippetLibrary.automaticCopiesOnly = { [weak self] in self?.settings.pasteBehavior == .copyOnly }
+        snippetLibrary.performPaste = { [weak self] text, mode, completion in
+            self?.pasteSnippet(text: text, mode: mode, completion: completion)
+        }
     }
 
     /**
@@ -91,7 +98,7 @@ final class AppModel: ObservableObject {
     /**
      * 从数据库重新加载历史。
      *
-     * 查询失败时记录错误，并把界面列表清空。当前选中项不在结果里时改选筛选后的第一条。
+     * 查询失败时保留当前列表并提示错误。当前选中项不在结果里时改选筛选后的第一条。
      * 查询成功且历史为空时，清掉清空失败提示。查询失败时保留这条提示。
      */
     func reload() {
@@ -102,8 +109,8 @@ final class AppModel: ObservableObject {
             }
             dismissClearAllFailureIfHistoryEmpty()
         } catch {
-            AppLog.store.error("reload failed \(String(describing: error))")
-            items = []
+            AppLog.store.error("reload failed")
+            banner = L10n.text("历史加载失败，请重试", "Could not load history. Please retry.")
         }
     }
 
@@ -192,6 +199,27 @@ final class AppModel: ObservableObject {
                 }
             }
         )
+    }
+
+    /// Uses a transient text payload; snippet contents never become history rows.
+    func pasteSnippet(text: String, mode: PasteMode, completion: @escaping (PasteOutcome) -> Void) {
+        pasteService.performText(
+            text: text, mode: mode, targetBundleID: targetBundleID, behavior: settings.pasteBehavior,
+            beginSelfWrite: { [weak self] hash, digests in self?.monitor.beginSelfWrite(hash: hash, digests: digests) ?? 0 },
+            finishSelfWrite: { [weak self] token, count in self?.monitor.finishSelfWrite(token: token, changeCount: count) },
+            prepareForKeystroke: { [weak self] in self?.onPreparePaste?() },
+            completion: { [weak self] outcome in
+                completion(outcome)
+                if outcome.message != nil { self?.onPasteFeedback?() }
+            }
+        )
+    }
+
+    func saveHistoryAsSnippet(_ item: ClipboardItem) {
+        guard item.kind == .text, !item.payloadOversize else { return }
+        showingSnippets = true
+        snippetLibrary.reload()
+        snippetLibrary.edit(body: item.plainText)
     }
 
     /**

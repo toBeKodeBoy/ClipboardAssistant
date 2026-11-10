@@ -258,6 +258,39 @@ final class PasteService {
     /** 写回使用的剪切板。测试可换成独立剪切板，避免改到系统通用剪切板。 */
     var pasteboard: NSPasteboard = .general
 
+    /// Injectable target checks keep the text path deterministic in tests.
+    var activateTextTarget: (String?) -> Bool = { bundleID in
+        guard let target = FrontmostApp.runningApplication(bundleID: bundleID),
+              target.bundleIdentifier != Bundle.main.bundleIdentifier else { return false }
+        return target.activate()
+    }
+    var textTargetIsFrontmost: (String?) -> Bool = { bundleID in
+        guard let bundleID else { return false }
+        return FrontmostApp.current().bundleID == bundleID
+    }
+
+    func performText(
+        text: String, mode: PasteMode, targetBundleID: String?, behavior: PasteBehavior,
+        beginSelfWrite: (String, Set<String>) -> UInt64,
+        finishSelfWrite: (UInt64, Int) -> Void,
+        prepareForKeystroke: () -> Void = {},
+        completion: @escaping (PasteOutcome) -> Void
+    ) {
+        guard text.utf8.count <= 100_000, !text.contains("\0") else {
+            completion(PasteOutcome(wroteClipboard: false, sentKeystroke: false, message: SnippetError.tooLarge.localizedDescription))
+            return
+        }
+        let now = Date()
+        let item = ClipboardItem(id: UUID().uuidString, kind: .text, plainText: text, contentHash: ContentHash.text(text),
+            sourceBundleID: nil, sourceName: "", createdAt: now, lastUsedAt: now, pinned: false, pinOrder: nil,
+            byteSize: text.utf8.count, imageWidth: nil, imageHeight: nil, payloadOversize: false)
+        let representation = StoredRepresentation(uti: PasteboardUTI.plain, storage: "inline", relativePath: nil, inlineValue: text)
+        perform(item: item, representations: [representation], directory: URL(fileURLWithPath: "/"),
+            mode: mode, targetBundleID: targetBundleID, behavior: behavior,
+            beginSelfWrite: beginSelfWrite, finishSelfWrite: finishSelfWrite,
+            prepareForKeystroke: prepareForKeystroke, requiresTargetValidation: true, completion: completion)
+    }
+
     /**
      * 执行一次复制或粘贴。
      *
@@ -284,6 +317,7 @@ final class PasteService {
         beginSelfWrite: (String, Set<String>) -> UInt64,
         finishSelfWrite: (UInt64, Int) -> Void,
         prepareForKeystroke: () -> Void = {},
+        requiresTargetValidation: Bool = false,
         completion: @escaping (PasteOutcome) -> Void
     ) {
         if item.payloadOversize {
@@ -315,8 +349,19 @@ final class PasteService {
             return
         }
         prepareForKeystroke()
-        FrontmostApp.runningApplication(bundleID: targetBundleID)?.activate()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+        if requiresTargetValidation {
+            guard activateTextTarget(targetBundleID) else {
+                completion(PasteOutcome(wroteClipboard: true, sentKeystroke: false, message: PasteOutcome.manualPasteMessage))
+                return
+            }
+        } else {
+            FrontmostApp.runningApplication(bundleID: targetBundleID)?.activate()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [self] in
+            if requiresTargetValidation && (!textTargetIsFrontmost(targetBundleID) || !AccessibilityClient.isTrusted()) {
+                completion(PasteOutcome(wroteClipboard: true, sentKeystroke: false, message: PasteOutcome.manualPasteMessage))
+                return
+            }
             let sent = KeystrokeSender.sendCommandV()
             if sent {
                 AppLog.paste.info("paste keystroke sent mode=\(modeName) kind=\(kind)")

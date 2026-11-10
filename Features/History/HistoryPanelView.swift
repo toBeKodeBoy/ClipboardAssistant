@@ -127,6 +127,9 @@ struct HistoryPanelView: View {
                     ForEach(rows) { item in
                         row(item)
                             .tag(item.id)
+                            .onHover { hovering in
+                                if hovering { model.copyHistoryOnHover(itemID: item.id) }
+                            }
                             .contextMenu { contextMenu(item) }
                             .onTapGesture(count: 2) { model.paste(mode: .automatic, itemID: item.id) }
                     }
@@ -164,6 +167,9 @@ struct HistoryPanelView: View {
                         Text(item.subtitle).font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
+                    if (item.kind == .text || item.kind == .rich) && !item.payloadOversize {
+                        Button(L10n.text("保存为片段", "Save as snippet")) { model.saveHistoryAsSnippet(item) }
+                    }
                     Button(item.pinned ? L10n.text("取消置顶", "Unpin") : L10n.text("置顶", "Pin")) {
                         model.togglePin(id: item.id)
                     }
@@ -248,6 +254,12 @@ struct HistoryPanelView: View {
     func contextMenu(_ item: ClipboardItem) -> some View {
         Button(L10n.text("复制", "Copy")) { model.paste(mode: .copyOnly, itemID: item.id) }
         Button(L10n.text("纯文本复制", "Copy as Plain Text")) { model.paste(mode: .plainCopy, itemID: item.id) }
+        if (item.kind == .text || item.kind == .rich) && !item.payloadOversize {
+            Button(L10n.text("添加片段…", "Add Snippet…")) {
+                model.selectedID = item.id
+                model.saveHistoryAsSnippet(item)
+            }
+        }
         Button(item.pinned ? L10n.text("取消置顶", "Unpin") : L10n.text("置顶", "Pin")) { model.togglePin(id: item.id) }
         if item.kind == .file || item.kind == .mixed {
             Button(L10n.text("在访达中显示", "Show in Finder")) { model.revealInFinder(id: item.id) }

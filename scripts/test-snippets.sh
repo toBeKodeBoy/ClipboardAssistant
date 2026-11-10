@@ -14,13 +14,13 @@ let package = Package(name: "ClipboardAssistant", products: [], targets: [
     .testTarget(name: "ClipboardAssistantTests", dependencies: ["ClipboardAssistant"])
 ])
 SWIFT
-printf 'module SQLite3 [system] { header "/usr/include/sqlite3.h" link "sqlite3" export * }\n' > "$work/Sources/SQLite3/module.modulemap"
+printf 'module SQLite3 [system] { header "%s" link "sqlite3" export * }\n' "${SQLITE_HEADER:-/usr/include/sqlite3.h}" > "$work/Sources/SQLite3/module.modulemap"
 for file in Domain/L10n.swift Domain/Snippet.swift Domain/SnippetTemplate.swift Storage/AppPaths.swift Storage/SQLiteDatabase.swift Storage/SnippetStore.swift; do
     if [[ -f "$repo/$file" ]]; then cp "$repo/$file" "$work/Sources/ClipboardAssistant/"; fi
 done
 cp "$repo/Tests/SnippetTests.swift" "$repo/Tests/SnippetStoreTests.swift" "$work/Tests/ClipboardAssistantTests/"
 cd "$work"
-swift test --enable-code-coverage
+swift test --enable-code-coverage "$@"
 if [[ -n "${SNIPPET_COVERAGE_DIR:-}" ]]; then
     mkdir -p "$SNIPPET_COVERAGE_DIR"
     cp .build/debug/codecov/*.json "$SNIPPET_COVERAGE_DIR/"

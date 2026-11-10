@@ -9,7 +9,7 @@ final class SnippetTests: XCTestCase {
     }
 
     func testInvalidAndNestedTemplatesAreRejected() {
-        for body in ["{{x", "{{}}", "{{a b}}", "{{{{a}}}}", "{{名字}}", "{{a}} }}"] {
+        for body in ["{{x", "{{}}", "{{a b}}", "{{{{a}}}}", "{{名字}}", "{{a}} }}", "{{a\n}}"] {
             XCTAssertThrowsError(try SnippetTemplate.parse(body), body)
         }
     }
@@ -46,4 +46,18 @@ final class SnippetTests: XCTestCase {
         XCTAssertFalse(validated.variables[1].required)
         XCTAssertTrue(validated.variables[1].multiline)
     }
+    func testLimitsAtBoundaryAndLocalizedErrors() throws {
+        let value = String(repeating: "a", count: 10000)
+        XCTAssertEqual(try SnippetTemplate.parse("{{x}}").render(values: ["x": value]), value)
+        XCTAssertEqual(try SnippetTemplate.parse(String(repeating: "a", count: 100000)).render(values: [:]).utf8.count, 100000)
+        XCTAssertEqual(try SnippetTemplate.parse(#"\{{"#).render(values: [:]), "{{")
+        XCTAssertThrowsError(try Snippet(title: String(repeating: "a", count: 81), body: "text").validated())
+        var snippet = Snippet(title: "x", body: "{{x}}")
+        snippet.variables = [SnippetVariable(name: "x", label: String(repeating: "a", count: 81))]
+        XCTAssertThrowsError(try snippet.validated())
+        for error: SnippetError in [.invalidContent, .invalidKeyword, .invalidTemplate, .tooLarge, .requiredValue, .conflict, .storage, .futureVersion, .invalidGroup] {
+            XCTAssertFalse(error.localizedDescription.isEmpty)
+        }
+    }
+
 }

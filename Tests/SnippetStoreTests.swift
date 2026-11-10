@@ -67,4 +67,27 @@ final class SnippetStoreTests: XCTestCase {
         try db.execute("DROP TABLE snippets")
         _ = try SnippetStore(directory: url)
     }
+    func testRenameGroupsAndRejectInvalidMetadataWithoutOverwriting() throws {
+        let url = try directory()
+        let store = try SnippetStore(directory: url)
+        let group = try store.saveGroup(name: "Work")
+        XCTAssertEqual(try store.saveGroup(id: group.id, name: "Office").id, group.id)
+        XCTAssertEqual(try store.fetchGroups().first?.name, "Office")
+        XCTAssertThrowsError(try store.saveGroup(name: "office"))
+        XCTAssertThrowsError(try store.saveGroup(id: "missing", name: "new"))
+        for name in ["", "未分组", "All snippets", String(repeating: "a", count: 31)] {
+            XCTAssertThrowsError(try store.saveGroup(name: name))
+        }
+        let item = try store.save(Snippet(title: "persist", body: "body"))
+        let db = try SQLiteDatabase(path: url.appendingPathComponent("history.db").path)
+        try db.run("UPDATE snippets SET variables_json=? WHERE id=?") {
+            bindText($0, 1, #"{"schemaVersion":99,"fields":[]}"#); bindText($0, 2, item.id)
+        }
+        XCTAssertThrowsError(try store.fetchAll())
+        XCTAssertThrowsError(try store.save(item))
+        var json = ""
+        try db.query("SELECT variables_json FROM snippets") { json = db.text($0, 0) }
+        XCTAssertTrue(json.contains("99"))
+    }
+
 }

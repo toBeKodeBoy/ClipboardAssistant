@@ -54,6 +54,9 @@
 		B11000000000000000000113 /* SnippetLibraryModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11000000000000000000013 /* SnippetLibraryModel.swift */; };
 		B11000000000000000000114 /* SnippetPanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11000000000000000000014 /* SnippetPanelView.swift */; };
 		B11000000000000000000102 /* SnippetIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11000000000000000000002 /* SnippetIntegrationTests.swift */; };
+		C11200000000000000000000 /* RulesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C11100000000000000000000 /* RulesTests.swift */; };
+		C11200000000000000000001 /* HistoryArchiveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C11100000000000000000001 /* HistoryArchiveTests.swift */; };
+		C11200000000000000000002 /* RuleStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C11100000000000000000002 /* RuleStoreTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -107,6 +110,9 @@
 		B11000000000000000000013 /* SnippetLibraryModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snippets/SnippetLibraryModel.swift"; sourceTree = "<group>"; };
 		B11000000000000000000014 /* SnippetPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Snippets/SnippetPanelView.swift"; sourceTree = "<group>"; };
 		B11000000000000000000002 /* SnippetIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnippetIntegrationTests.swift; sourceTree = "<group>"; };
+		C11100000000000000000000 /* RulesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RulesTests.swift; sourceTree = "<group>"; };
+		C11100000000000000000001 /* HistoryArchiveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryArchiveTests.swift; sourceTree = "<group>"; };
+		C11100000000000000000002 /* RuleStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuleStoreTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -204,6 +210,9 @@
 		A100000000000000000007DE /* Tests */ = {
 			isa = PBXGroup;
 			children = (
+				C11100000000000000000002 /* RuleStoreTests.swift */,
+				C11100000000000000000001 /* HistoryArchiveTests.swift */,
+				C11100000000000000000000 /* RulesTests.swift */,
 				A1000000000000000000001A /* HistoryStoreTests.swift */,
 				A1000000000000000000001B /* LogicTests.swift */,
 				A10000000000000000000021 /* CoverageTests.swift */,
@@ -368,6 +377,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C11200000000000000000002 /* RuleStoreTests.swift in Sources */,
+				C11200000000000000000001 /* HistoryArchiveTests.swift in Sources */,
+				C11200000000000000000000 /* RulesTests.swift in Sources */,
 				A1000000000000000000020D /* HistoryStoreTests.swift */,
 				A1000000000000000000020E /* LogicTests.swift */,
 				A10000000000000000000221 /* CoverageTests.swift */,

@@ -14,6 +14,7 @@ final class HistoryStore {
     /** 应用支持目录，数据库和负载都在这里。 */
     let directory: URL
     let snippets: SnippetStore
+    let rules: RuleStore
     /** 历史元数据库。 */
     private let database: SQLiteDatabase
     /** 负载文件和缩略图。 */
@@ -33,8 +34,10 @@ final class HistoryStore {
         database = try SQLiteDatabase(path: directory.appendingPathComponent("history.db").path)
         payloads = try PayloadStore(root: directory)
         snippets = SnippetStore(database: database, lock: lock)
+        rules = RuleStore(database: database, lock: lock)
         try migrate()
         try snippets.migrate()
+        try rules.migrate()
     }
 
     /**
@@ -322,7 +325,7 @@ final class HistoryStore {
     private func migrate() throws {
         var version: Int64 = 0
         try database.query("PRAGMA user_version") { version = database.int64($0, 0) }
-        guard version <= 2 else { throw SnippetError.futureVersion }
+        guard version <= 3 else { throw SnippetError.futureVersion }
         try database.execute("""
             CREATE TABLE IF NOT EXISTS items (
                 id TEXT PRIMARY KEY,

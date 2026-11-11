@@ -9,6 +9,8 @@ import Foundation
  * @date 2026/10/27
  */
 struct PrivacyDecision: Equatable {
+    var matchedIgnoreRule: Bool = false
+    var ruleEvaluationUnavailable: Bool = false
     /** 当前是否处于暂停。 */
     var isPaused: Bool
     /** 系统安全输入是否开启。 */
@@ -47,6 +49,7 @@ enum PrivacyGate {
      * @return 允许入库时返回 true
      */
     static func allowsCapture(_ decision: PrivacyDecision) -> Bool {
+        if decision.matchedIgnoreRule || decision.ruleEvaluationUnavailable { return false }
         if decision.isPaused { return false }
         if decision.isSelfWrite { return false }
         if decision.hasTransientMarker { return false }

@@ -181,6 +181,14 @@ final class CaptureMonitor {
             let sourceName = snapshot.hasRemoteMarker ? L10n.text("通用剪贴板", "Universal Clipboard") : front.name
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
+                guard self.pasteboard.changeCount == count else { return }
+                var finalDecision = decision
+                finalDecision.isPaused = settings.isPaused
+                finalDecision.recordDuringSecureInput = settings.recordDuringSecureInput
+                finalDecision.secureInputEnabled = self.secureInputEnabled() || (self.lastSecureInputAt.map { self.clock().timeIntervalSince($0) < 1 } ?? false)
+                finalDecision.excludedBundleIDs = Set(settings.excludedApps.map(\.bundleID))
+                finalDecision.ignoreConcealed = settings.ignoreConcealed
+                guard PrivacyGate.allowsCapture(finalDecision) else { return }
                 if self.selfWrites.shouldIgnore(changeCount: count, hash: captured.contentHash, digests: digests, now: self.clock()) {
                     AppLog.capture.info("skip self-write")
                     return

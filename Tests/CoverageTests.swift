@@ -1342,7 +1342,7 @@ final class CoverageTests: XCTestCase {
     }
 
     private func skipsModalTitle(_ title: String) -> Bool {
-        let blocked = ["添加", "Add app", "导出", "Export", "开机", "Launch at login"]
+        let blocked = ["添加", "Add app", "导入", "Import", "导出", "Export", "开机", "Launch at login"]
         return title.isEmpty || blocked.contains { title.contains($0) }
     }
 

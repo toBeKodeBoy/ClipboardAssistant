@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import Combine
 
 /**
  * 主面板和菜单栏共用的应用状态。
@@ -12,6 +13,8 @@ import Foundation
 @MainActor
 final class AppModel: ObservableObject {
     @Published var showingSnippets = false
+    private var featureObservers = Set<AnyCancellable>()
+    let transfer: HistoryTransferModel
     let snippetLibrary: SnippetLibraryModel
     @Published var items: [ClipboardItem] = []
     @Published var query = ""
@@ -67,8 +70,12 @@ final class AppModel: ObservableObject {
      */
     init(store: HistoryStore, settings: AppSettings) {
         self.store = store
+        transfer = HistoryTransferModel(store: store, policy: { settings.retention })
         self.settings = settings
         snippetLibrary = SnippetLibraryModel(store: store.snippets)
+        transfer.$presented.dropFirst().sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &featureObservers)
+        transfer.onChange = { [weak self] in self?.reload() }
+        settings.onRetentionChange = { [weak store] in try? store?.invalidateImportPlans() }
         snippetLibrary.automaticCopiesOnly = { [weak self] in self?.settings.pasteBehavior == .copyOnly }
         snippetLibrary.performPaste = { [weak self] text, mode, completion in
             self?.pasteSnippet(text: text, mode: mode, completion: completion)

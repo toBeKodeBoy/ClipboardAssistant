@@ -73,6 +73,7 @@ struct PasteboardItemData: Equatable {
 struct PasteboardSnapshot: Equatable {
     /** 剪切板上的各项。 */
     var items: [PasteboardItemData]
+    var archivedFiles: [FileFingerprint]? = nil
 
     /**
      * 是否带机密标记。
@@ -146,6 +147,7 @@ struct CapturedRepresentation: Equatable {
  */
 struct CapturedClipboard: Equatable {
     /** 内容类型。 */
+    var files: [FileFingerprint] = []
     var kind: ItemKind
     /** 搜索和预览用的纯文本。超限时只含预览。 */
     var plainText: String
@@ -205,6 +207,7 @@ enum CaptureBuilder {
         let byteSize = byteSizeFor(plain: plain, image: image, files: fileEntries, counts: counts)
 
         return CapturedClipboard(
+            files: fileEntries,
             kind: kind,
             plainText: displayText,
             contentHash: hash,
@@ -345,6 +348,7 @@ enum CaptureBuilder {
      * @return 去重后的文件指纹
      */
     private static func fileFingerprints(in snapshot: PasteboardSnapshot) -> [FileFingerprint] {
+        if let archived = snapshot.archivedFiles { return archived }
         var paths: [String] = []
         for item in snapshot.items {
             if let data = item.values[PasteboardUTI.fileURL], let text = String(data: data, encoding: .utf8) {

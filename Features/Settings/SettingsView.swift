@@ -54,6 +54,9 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(width: 720, height: 480)
+        .sheet(isPresented: Binding(get: { model.transfer.presented && model.transfer.source == "settings" }, set: { if !$0 { model.transfer.close() } })) {
+            HistoryTransferView(model: model.transfer)
+        }
         .onAppear { model.refreshAccessibility() }
         .background(KeyRecorder(recording: $recording, message: $recordMessage, settings: model.settings, onSave: model.applyHotkey))
     }
@@ -133,6 +136,8 @@ struct SettingsView: View {
             }
             Text(L10n.text("当前 \(model.items.count) 条", "\(model.items.count) items"))
                 .foregroundStyle(.secondary)
+            Button(L10n.text("导出全部历史…", "Export all history…")) { model.transfer.openExport(ids: nil, source: "settings") }.disabled(model.items.isEmpty)
+            Button(L10n.text("导入历史…", "Import history…")) { model.transfer.chooseImport(source: "settings") }
             Button(L10n.text("清空全部历史", "Clear all history"), role: .destructive) {
                 confirmClear = true
             }

@@ -31,6 +31,7 @@ final class SQLiteDatabase {
         sqlite3_busy_timeout(db, 2_000)
         try execute("PRAGMA foreign_keys = ON;")
         try execute("PRAGMA journal_mode = WAL;")
+        try execute("PRAGMA synchronous = FULL;")
     }
 
     /**

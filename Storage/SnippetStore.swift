@@ -28,7 +28,7 @@ final class SnippetStore {
             do {
                 var version: Int64 = 0
                 try database.query("PRAGMA user_version") { version = database.int64($0, 0) }
-                guard version <= 3 else { throw SnippetError.futureVersion }
+                guard version <= 4 else { throw SnippetError.futureVersion }
                 if version < 2 {
                     try database.execute("""
                         CREATE TABLE IF NOT EXISTS snippet_groups (

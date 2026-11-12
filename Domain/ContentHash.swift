@@ -116,20 +116,3 @@ enum ContentHash {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 }
-
-/**
- * 文件去重指纹。
- *
- * 只记录路径、大小和修改时间，不保存文件内容。
- *
- * @author toBeKodeBoy
- * @date 2026/10/27
- */
-struct FileFingerprint: Equatable {
-    /** 文件绝对路径。 */
-    var path: String
-    /** 文件字节大小。 */
-    var size: Int64
-    /** 修改时间，单位为秒。 */
-    var modifiedAt: Int64
-}

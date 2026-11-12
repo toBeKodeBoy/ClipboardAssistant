@@ -15,11 +15,13 @@ final class HistoryStore {
     let directory: URL
     let snippets: SnippetStore
     /** 历史元数据库。 */
-    private let database: SQLiteDatabase
+    let database: SQLiteDatabase
     /** 负载文件和缩略图。 */
-    private let payloads: PayloadStore
+    let payloads: PayloadStore
     /** 保护数据库和文件的同一把锁。 */
     private let lock = NSLock()
+    var payloadLeases: [String: Int] = [:]
+    var pendingPayloadDeletes = Set<String>()
 
     /**
      * 打开目录中的历史库，并在缺表时建表。
@@ -35,6 +37,8 @@ final class HistoryStore {
         snippets = SnippetStore(database: database, lock: lock)
         try migrate()
         try snippets.migrate()
+        try ArchiveSchema(database: database, lock: lock).migrate()
+        try recoverArchives()
     }
 
     /**
@@ -51,7 +55,8 @@ final class HistoryStore {
             try database.query("""
                 SELECT id, kind, plain_text, content_hash, source_bundle_id, source_name,
                        created_at, last_used_at, pinned, pin_order, byte_size,
-                       image_width, image_height, payload_oversize
+                       image_width, image_height, payload_oversize,
+                       (SELECT label FROM item_labels WHERE item_id=items.id)
                 FROM items
                 ORDER BY pinned DESC, COALESCE(pin_order, 1000000) ASC, last_used_at DESC
                 """) { statement in
@@ -74,7 +79,7 @@ final class HistoryStore {
      * @throws StoreError.sql 写入失败时抛出
      */
     func insertOrTouch(_ captured: CapturedClipboard, sourceBundleID: String?, sourceName: String, now: Date = Date()) throws -> ClipboardItem {
-        try locked {
+        return try locked {
             if let existing = try item(hash: captured.contentHash) {
                 try database.run("""
                     UPDATE items SET last_used_at = ?, source_bundle_id = ?, source_name = ? WHERE id = ?
@@ -114,6 +119,10 @@ final class HistoryStore {
                     bindOptionalInt(statement, 11, captured.imageHeight)
                     sqlite3_bind_int(statement, 12, captured.oversize ? 1 : 0)
                 }
+                if !captured.files.isEmpty {
+                    let json = String(decoding: try JSONEncoder().encode(StoredFileMetadata(files: captured.files, incomplete: false)), as: UTF8.self)
+                    try database.run("INSERT INTO item_files (item_id,metadata) VALUES (?,?)") { bindText($0, 1, id); bindText($0, 2, json) }
+                }
                 if !captured.oversize {
                     for representation in captured.representations {
                         let relative = try store(representation, itemID: id)
@@ -135,7 +144,7 @@ final class HistoryStore {
                 try database.execute("COMMIT")
             } catch {
                 try? database.execute("ROLLBACK")
-                payloads.removeItem(id: id)
+                removePayload(id: id)
                 throw error
             }
             return ClipboardItem(
@@ -152,6 +161,7 @@ final class HistoryStore {
                 byteSize: captured.byteSize,
                 imageWidth: captured.imageWidth,
                 imageHeight: captured.imageHeight,
+                label: nil,
                 payloadOversize: captured.oversize
             )
         }
@@ -232,7 +242,7 @@ final class HistoryStore {
     func delete(id: String) throws {
         try locked {
             try database.run("DELETE FROM items WHERE id = ?") { bindText($0, 1, id) }
-            payloads.removeItem(id: id)
+            removePayload(id: id)
         }
     }
 
@@ -245,8 +255,9 @@ final class HistoryStore {
      */
     func clearAll() throws {
         try locked {
+            let ids = try archiveItems().map(\.id)
             try database.execute("DELETE FROM items")
-            payloads.removeAllPayloads()
+            ids.forEach { removePayload(id: $0) }
             try database.execute("VACUUM")
         }
     }
@@ -322,7 +333,7 @@ final class HistoryStore {
     private func migrate() throws {
         var version: Int64 = 0
         try database.query("PRAGMA user_version") { version = database.int64($0, 0) }
-        guard version <= 2 else { throw SnippetError.futureVersion }
+        guard version <= 4 else { throw SnippetError.futureVersion }
         try database.execute("""
             CREATE TABLE IF NOT EXISTS items (
                 id TEXT PRIMARY KEY,
@@ -368,7 +379,8 @@ final class HistoryStore {
         try database.query("""
             SELECT id, kind, plain_text, content_hash, source_bundle_id, source_name,
                    created_at, last_used_at, pinned, pin_order, byte_size,
-                   image_width, image_height, payload_oversize
+                   image_width, image_height, payload_oversize,
+                   (SELECT label FROM item_labels WHERE item_id=items.id)
             FROM items WHERE content_hash = ? LIMIT 1
             """) { bindText($0, 1, hash) } row: { statement in
             found = readItem(statement)
@@ -382,7 +394,7 @@ final class HistoryStore {
      * @param statement 位于 SQLITE_ROW 的语句，列顺序与列表查询一致
      * @return 历史条目
      */
-    private func readItem(_ statement: OpaquePointer?) -> ClipboardItem {
+    func readItem(_ statement: OpaquePointer?) -> ClipboardItem {
         let pinOrder = sqlite3_column_type(statement, 9) == SQLITE_NULL ? nil : Int(database.int64(statement, 9))
         let width = sqlite3_column_type(statement, 11) == SQLITE_NULL ? nil : Int(database.int64(statement, 11))
         let height = sqlite3_column_type(statement, 12) == SQLITE_NULL ? nil : Int(database.int64(statement, 12))
@@ -400,6 +412,7 @@ final class HistoryStore {
             byteSize: Int(database.int64(statement, 10)),
             imageWidth: width,
             imageHeight: height,
+            label: database.optionalText(statement, 14),
             payloadOversize: database.int64(statement, 13) != 0
         )
     }
@@ -425,7 +438,7 @@ final class HistoryStore {
      * @return 当前最大 pinOrder 加一；还没有置顶时为 1
      * @throws StoreError.sql 查询失败时抛出
      */
-    private func nextPinOrder() throws -> Int64 {
+    func nextPinOrder() throws -> Int64 {
         var order: Int64 = 0
         try database.query("SELECT COALESCE(MAX(pin_order), 0) FROM items") { statement in
             order = database.int64(statement, 0) + 1
@@ -440,7 +453,7 @@ final class HistoryStore {
      * @return body 的返回值
      * @throws body 抛出的错误
      */
-    private func locked<T>(_ body: () throws -> T) throws -> T {
+    func locked<T>(_ body: () throws -> T) rethrows -> T {
         lock.lock()
         defer { lock.unlock() }
         return try body()

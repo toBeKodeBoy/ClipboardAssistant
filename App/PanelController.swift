@@ -337,6 +337,7 @@ final class PanelController: NSObject, NSWindowDelegate {
      * @return 已消费时返回 true，调用方应吞掉事件
      */
     func handle(_ event: NSEvent) -> Bool {
+        if model.transfer.presented { return false }
         if model.showingSnippets {
             let library = model.snippetLibrary
             if library.isBusy { return true }

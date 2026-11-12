@@ -21,6 +21,11 @@ struct HistoryPanelView: View {
                     .padding(.vertical, 8)
                     .background(Color.orange.opacity(0.15))
             }
+            HStack {
+                Button(L10n.text("导出历史…", "Export history…")) { model.transfer.openExport(ids: Set(model.visibleItems().map(\.id)), source: "history") }.disabled(model.visibleItems().isEmpty)
+                Button(L10n.text("导入历史…", "Import history…")) { model.transfer.chooseImport(source: "history") }
+                Spacer()
+            }.font(.caption).padding(.horizontal, 12)
             footer
         }
         .frame(
@@ -29,6 +34,9 @@ struct HistoryPanelView: View {
             minHeight: PanelGeometry.minimumHeight,
             maxHeight: .infinity
         )
+        .sheet(isPresented: Binding(get: { model.transfer.presented && model.transfer.source == "history" }, set: { if !$0 { model.transfer.close() } })) {
+            HistoryTransferView(model: model.transfer)
+        }
         .alert(L10n.text("删除置顶条目？", "Delete pinned item?"), isPresented: pinnedDeletePresented) {
             pinnedDeleteActions(pendingID: model.pendingPinnedDeleteID)
         } message: {

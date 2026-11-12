@@ -1,0 +1,54 @@
+{
+  "date": "2026-11-11",
+  "metric": "Xcode executable line coverage",
+  "scope": "Five retained history transfer module files after removal of labels and capture rules; not whole-application or branch coverage",
+  "testResult": "Passed",
+  "passedTests": 127,
+  "failedTests": 0,
+  "skippedTests": 0,
+  "coveredLines": 1185,
+  "executableLines": 1185,
+  "runtimeWarnings": [
+    {
+      "message": "Publishing changes from within view updates is not allowed, this will cause undefined behavior.",
+      "source": "CoverageTests.swift"
+    }
+  ],
+  "files": [
+    {
+      "path": "Domain/HistoryArchive.swift",
+      "coveredLines": 173,
+      "executableLines": 173,
+      "lineCoverage": 1,
+      "sha256": "8fbcd867ab9fafff8c8745a5752c6201db16f2c33dbb9599f9cc842314ea98c8"
+    },
+    {
+      "path": "Storage/ArchiveSchema.swift",
+      "coveredLines": 27,
+      "executableLines": 27,
+      "lineCoverage": 1,
+      "sha256": "40650960aa1f0401f2054187a2e81ff0852272d23003ebc4b122b4debf1c8dd4"
+    },
+    {
+      "path": "Storage/ArchiveStream.swift",
+      "coveredLines": 145,
+      "executableLines": 145,
+      "lineCoverage": 1,
+      "sha256": "5327805afc8a2ebc51bfedc0af66e41b30467ac44424bf04420605222857ceea"
+    },
+    {
+      "path": "Storage/HistoryTransfer.swift",
+      "coveredLines": 532,
+      "executableLines": 532,
+      "lineCoverage": 1,
+      "sha256": "8f3bcaa5f1dedef97f6e179ec9f00cc7bdd5df320db7835c421d390f11ba4979"
+    },
+    {
+      "path": "Features/History/HistoryTransferView.swift",
+      "coveredLines": 308,
+      "executableLines": 308,
+      "lineCoverage": 1,
+      "sha256": "3e811488bc341239cdbe8a1dd678bc0988f454cce2a1257eadabfbe262398fab"
+    }
+  ]
+}

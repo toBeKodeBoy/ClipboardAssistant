@@ -36,6 +36,7 @@ struct ClipboardItem: Identifiable, Equatable {
     /** 图片像素高度。非图片为空。 */
     var imageHeight: Int?
     /** 原文超过单条上限，只保留了预览，不能从这条恢复粘贴。 */
+    var label: String? = nil
     var payloadOversize: Bool
 
     /**

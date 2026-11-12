@@ -123,6 +123,9 @@ enum ClipboardAssistantMain {
      * 创建应用并进入运行循环。
      */
     static func main() {
+        #if DEBUG
+        if ArchiveCrashHarness.runIfRequested(CommandLine.arguments) { return }
+        #endif
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate

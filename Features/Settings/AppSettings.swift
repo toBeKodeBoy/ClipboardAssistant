@@ -158,8 +158,9 @@ final class AppSettings: ObservableObject {
     @Published var pauseChoice: PauseChoice { didSet { persist(Keys.pauseChoice, pauseChoice.rawValue) } }
     @Published var manuallyPaused: Bool { didSet { persist(Keys.manuallyPaused, manuallyPaused) } }
     @Published var pauseUntil: Date? { didSet { persist(Keys.pauseUntil, pauseUntil?.timeIntervalSince1970 ?? 0) } }
-    @Published var maxCount: Int { didSet { persist(Keys.maxCount, maxCount) } }
-    @Published var maxDays: Int { didSet { persist(Keys.maxDays, maxDays) } }
+    var onRetentionChange: (() -> Void)?
+    @Published var maxCount: Int { didSet { persist(Keys.maxCount, maxCount); onRetentionChange?() } }
+    @Published var maxDays: Int { didSet { persist(Keys.maxDays, maxDays); onRetentionChange?() } }
     @Published var excludedApps: [ExcludedApp] { didSet { saveExcluded() } }
     @Published var hotkeyCode: Int { didSet { persist(Keys.hotkeyCode, hotkeyCode) } }
     @Published var hotkeyModifiers: Int { didSet { persist(Keys.hotkeyModifiers, hotkeyModifiers) } }

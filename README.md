@@ -155,6 +155,8 @@ macOS 14 实机、VoiceOver 全流程和大备份性能尚未全部验收，自�
 - [功能清单](docs/剪切板助手%20功能清单.md)
 - [历史导入导出实现与验证](docs/rules-history-v1.1/validation.md)
 - [片段库实现记录](docs/snippets-v1.1/implementation.md)
+- [功能清单 v1.1](docs/剪切板助手%20功能清单%20v1.1.md)
+- [功能清单 v1.2](docs/剪切板助手%20功能清单%20v1.2.md)
 - [开发约定](AGENTS.md)
 - [签名与公证](Packaging/notarize.md)
 

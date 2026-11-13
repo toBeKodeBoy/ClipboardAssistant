@@ -29,9 +29,7 @@ struct HistoryPanelView: View {
             footer
         }
         .frame(
-            minWidth: PanelGeometry.minimumWidth,
             maxWidth: .infinity,
-            minHeight: PanelGeometry.minimumHeight,
             maxHeight: .infinity
         )
         .sheet(isPresented: Binding(get: { model.transfer.presented && model.transfer.source == "history" }, set: { if !$0 { model.transfer.close() } })) {

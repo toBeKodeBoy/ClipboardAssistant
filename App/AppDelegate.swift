@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 
 /**
  * 应用入口委托。
@@ -26,10 +27,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             try MainActor.assumeIsolated {
                 try self.launch(directory: try AppRuntime.supportDirectory())
+                if !Self.isLoginLaunch(NSAppleEventManager.shared().currentAppleEvent) {
+                    self.showRequestedPanel()
+                }
             }
         } catch {
             Self.presentDatabaseFailure(error)
         }
+    }
+
+    /// 外部启动器再次打开应用时，显式显示面板，不使用 toggle。
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        guard !AppRuntime.skipsLaunch else { return false }
+        MainActor.assumeIsolated { showRequestedPanel() }
+        return false
+    }
+
+    static func isLoginLaunch(_ event: NSAppleEventDescriptor?) -> Bool {
+        guard let event else { return false }
+        return event.paramDescriptor(forKeyword: AEKeyword(keyAELaunchedAsLogInItem)) != nil
+            || event.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue == OSType(keyAELaunchedAsLogInItem)
+    }
+
+    @MainActor
+    private func showRequestedPanel() {
+        panel?.show(rememberingFrontApp: !(panel?.panel.isVisible ?? false), placement: .center)
     }
 
     /**

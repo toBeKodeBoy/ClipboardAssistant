@@ -433,7 +433,7 @@ final class LogicTests: XCTestCase {
         XCTAssertFalse(PanelGeometry.isFactorySize(width: 880, height: 500))
 
         let fresh = PanelGeometry.migrate(storedWidth: nil, storedHeight: nil, storedPlacement: nil, alreadyMigrated: false)
-        XCTAssertEqual(fresh.preferred, PanelGeometry.Preferred(width: 960, height: 680, placement: .center))
+        XCTAssertEqual(fresh.preferred, PanelGeometry.Preferred(width: 1100, height: 560, placement: .center))
         XCTAssertTrue(fresh.shouldPersist)
 
         let legacy = PanelGeometry.migrate(storedWidth: 640, storedHeight: 480, storedPlacement: "mouse", alreadyMigrated: false)
@@ -441,12 +441,12 @@ final class LogicTests: XCTestCase {
         XCTAssertTrue(legacy.shouldPersist)
         let minimum = PanelGeometry.migrate(storedWidth: 420, storedHeight: 360, storedPlacement: "mouse", alreadyMigrated: false)
         XCTAssertEqual(minimum.preferred.placement, .center)
-        XCTAssertEqual(minimum.preferred.width, 960)
+        XCTAssertEqual(minimum.preferred.width, 1100)
 
         let legacyCenter = PanelGeometry.migrate(storedWidth: 641, storedHeight: 481, storedPlacement: "center", alreadyMigrated: false)
         XCTAssertEqual(legacyCenter.preferred.placement, .center)
-        XCTAssertEqual(legacyCenter.preferred.width, 960)
-        XCTAssertEqual(legacyCenter.preferred.height, 680)
+        XCTAssertEqual(legacyCenter.preferred.width, 1100)
+        XCTAssertEqual(legacyCenter.preferred.height, 560)
 
         let custom = PanelGeometry.migrate(storedWidth: 880, storedHeight: 500, storedPlacement: "mouse", alreadyMigrated: false)
         XCTAssertEqual(custom.preferred, PanelGeometry.Preferred(width: 880, height: 500, placement: .mouse))
@@ -455,7 +455,7 @@ final class LogicTests: XCTestCase {
         let invalid = PanelGeometry.migrate(storedWidth: Double.nan, storedHeight: 0, storedPlacement: "dock", alreadyMigrated: false)
         XCTAssertEqual(invalid.preferred, fresh.preferred)
         let partial = PanelGeometry.migrate(storedWidth: 880, storedHeight: nil, storedPlacement: "", alreadyMigrated: false)
-        XCTAssertEqual(partial.preferred, PanelGeometry.Preferred(width: 880, height: 680, placement: .center))
+        XCTAssertEqual(partial.preferred, PanelGeometry.Preferred(width: 880, height: 560, placement: .center))
         let negative = PanelGeometry.migrate(storedWidth: -5, storedHeight: Double.infinity, storedPlacement: nil, alreadyMigrated: false)
         XCTAssertEqual(negative.preferred, fresh.preferred)
 
@@ -544,7 +544,7 @@ final class LogicTests: XCTestCase {
             visible: CGRect(x: 0, y: 0, width: 2000, height: 2000)
         )
         XCTAssertFalse(invalidPreferred.clamped)
-        XCTAssertEqual(invalidPreferred.frame.size, CGSize(width: 960, height: 680))
+        XCTAssertEqual(invalidPreferred.frame.size, CGSize(width: 1100, height: 560))
 
         let grown = PanelGeometry.frame(
             preferred: CGSize(width: 100, height: 100),
@@ -553,7 +553,7 @@ final class LogicTests: XCTestCase {
             visible: CGRect(x: 0, y: 0, width: 2000, height: 2000)
         )
         XCTAssertFalse(grown.clamped)
-        XCTAssertEqual(grown.frame.size, CGSize(width: 420, height: 360))
+        XCTAssertEqual(grown.frame.size, CGSize(width: 720, height: 560))
         let tinyScreen = PanelGeometry.frame(
             preferred: preferred,
             placement: .center,
@@ -577,7 +577,7 @@ final class LogicTests: XCTestCase {
             visible: CGRect(x: Double.nan, y: Double.infinity, width: 0, height: 0)
         )
         XCTAssertEqual(brokenScreen.frame.origin, CGPoint.zero)
-        XCTAssertEqual(brokenScreen.frame.size, CGSize(width: 960, height: 680))
+        XCTAssertEqual(brokenScreen.frame.size, CGSize(width: 1100, height: 560))
 
         XCTAssertEqual(PanelGeometry.fittedLength(preferred: 100, minimum: 420, visibleLength: -1), 420, accuracy: 0.001)
         XCTAssertEqual(PanelGeometry.fittedLength(preferred: 500, minimum: 420, visibleLength: 0), 500, accuracy: 0.001)
@@ -623,7 +623,7 @@ final class LogicTests: XCTestCase {
         )
         XCTAssertEqual(
             PanelGeometry.sizeToRemember(preferred: CGSize(width: Double.nan, height: 0), applied: applied, current: applied, clamped: true),
-            CGSize(width: 960, height: 680)
+            CGSize(width: 1100, height: 560)
         )
         XCTAssertEqual(
             PanelGeometry.sizeToRemember(preferred: preferredSize, applied: applied, current: CGSize(width: 402, height: 300), clamped: true),
@@ -643,7 +643,7 @@ final class LogicTests: XCTestCase {
         )
         XCTAssertEqual(
             PanelGeometry.sizeToRemember(preferred: CGSize(width: Double.nan, height: Double.nan), applied: applied, current: CGSize(width: 0, height: -4), clamped: false),
-            CGSize(width: 960, height: 680)
+            CGSize(width: 1100, height: 560)
         )
         XCTAssertEqual(
             PanelGeometry.sizeToRemember(preferred: preferredSize, applied: applied, current: CGSize(width: 401, height: 300), clamped: true),
@@ -654,9 +654,9 @@ final class LogicTests: XCTestCase {
             CGSize(width: 810, height: 600)
         )
 
-        XCTAssertEqual(PanelGeometry.minimumSize(fitting: CGSize(width: 960, height: 680)), CGSize(width: 420, height: 360))
+        XCTAssertEqual(PanelGeometry.minimumSize(fitting: CGSize(width: 960, height: 680)), CGSize(width: 720, height: 560))
         XCTAssertEqual(PanelGeometry.minimumSize(fitting: CGSize(width: 200, height: 0.5)), CGSize(width: 200, height: 1))
-        XCTAssertEqual(PanelGeometry.minimumSize(fitting: CGSize(width: 0, height: Double.nan)), CGSize(width: 420, height: 360))
+        XCTAssertEqual(PanelGeometry.minimumSize(fitting: CGSize(width: 0, height: Double.nan)), CGSize(width: 720, height: 560))
     }
 
     func testSavedPanelFrameMigratesOnceAndThenKeepsALaterChoice() {
@@ -669,10 +669,10 @@ final class LogicTests: XCTestCase {
         defaults.set("mouse", forKey: "panelPlacement")
 
         let migrated = AppSettings(defaults: defaults)
-        XCTAssertEqual(migrated.panelWidth, 960, accuracy: 0.001)
-        XCTAssertEqual(migrated.panelHeight, 680, accuracy: 0.001)
+        XCTAssertEqual(migrated.panelWidth, 1100, accuracy: 0.001)
+        XCTAssertEqual(migrated.panelHeight, 560, accuracy: 0.001)
         XCTAssertEqual(migrated.panelPlacement, .center)
-        XCTAssertEqual(defaults.double(forKey: "panelWidth"), 960, accuracy: 0.001)
+        XCTAssertEqual(defaults.double(forKey: "panelWidth"), 1100, accuracy: 0.001)
         XCTAssertEqual(defaults.string(forKey: "panelPlacement"), "center")
         XCTAssertTrue(defaults.bool(forKey: "panelGeometryMigrated"))
 
@@ -704,8 +704,8 @@ final class LogicTests: XCTestCase {
         doneDefaults.set(true, forKey: "panelGeometryMigrated")
         doneDefaults.set("dock", forKey: "panelPlacement")
         let done = AppSettings(defaults: doneDefaults)
-        XCTAssertEqual(done.panelWidth, 960, accuracy: 0.001)
-        XCTAssertEqual(done.panelHeight, 680, accuracy: 0.001)
+        XCTAssertEqual(done.panelWidth, 1100, accuracy: 0.001)
+        XCTAssertEqual(done.panelHeight, 560, accuracy: 0.001)
         XCTAssertEqual(done.panelPlacement, .center)
         XCTAssertNil(doneDefaults.object(forKey: "panelWidth"))
         XCTAssertEqual(doneDefaults.string(forKey: "panelPlacement"), "dock")

@@ -28,6 +28,7 @@ private struct SnippetPanelContainer: View {
                 HistoryPanelView()
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onChange(of: model.showingSnippets) { _, showing in
             if showing { model.snippetLibrary.reload() }
             else { model.snippetLibrary.close() }

@@ -23,6 +23,23 @@ final class CoverageTests: XCTestCase {
         super.tearDown()
     }
 
+    func testLoginLaunchDetection() {
+        XCTAssertFalse(AppDelegate.isLoginLaunch(nil))
+        let event = NSAppleEventDescriptor.appleEvent(
+            withEventClass: AEEventClass(kCoreEventClass), eventID: AEEventID(kAEOpenApplication),
+            targetDescriptor: nil, returnID: AEReturnID(kAutoGenerateReturnID), transactionID: AETransactionID(kAnyTransactionID)
+        )
+        XCTAssertFalse(AppDelegate.isLoginLaunch(event))
+        event.setParam(NSAppleEventDescriptor(boolean: true), forKeyword: AEKeyword(keyAELaunchedAsLogInItem))
+        XCTAssertTrue(AppDelegate.isLoginLaunch(event))
+        let legacy = NSAppleEventDescriptor.appleEvent(
+            withEventClass: AEEventClass(kCoreEventClass), eventID: AEEventID(kAEOpenApplication),
+            targetDescriptor: nil, returnID: AEReturnID(kAutoGenerateReturnID), transactionID: AETransactionID(kAnyTransactionID)
+        )
+        legacy.setParam(NSAppleEventDescriptor(enumCode: OSType(keyAELaunchedAsLogInItem)), forKeyword: AEKeyword(keyAEPropData))
+        XCTAssertTrue(AppDelegate.isLoginLaunch(legacy))
+    }
+
     func testLaunchAssemblesATemporaryStackAndStopsTheMonitor() throws {
         let (settings, suite) = makeSettings()
         let directory = try makeDirectory()

@@ -10,11 +10,11 @@ import CoreGraphics
  * @date 2026/11/07
  */
 enum PanelGeometry {
-    static let minimumWidth: Double = 420
-    static let minimumHeight: Double = 360
-    /// 默认宽度超过 720，预览在列表右侧。
-    static let defaultWidth: Double = 960
-    static let defaultHeight: Double = 680
+    static let minimumWidth: Double = 720
+    static let minimumHeight: Double = 560
+    /// 首次启动采用宽屏布局（1100×560），预览在列表右侧。
+    static let defaultWidth: Double = 1100
+    static let defaultHeight: Double = 560
     /// 上一版出厂尺寸。宽高都不大于这个框时，视为还没有被用户拉大。
     static let legacyWidth: Double = 640
     static let legacyHeight: Double = 480
